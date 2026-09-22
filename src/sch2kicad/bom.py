@@ -30,6 +30,9 @@ _GRID_HEADS = {"CAPACITORS": "Capacitor", "RESISTORS": "Resistor", "IC'S": "IC",
                "DIODES": "Diode", "LEDS": "LED", "TRANSISTORS": "Transistor",
                "CONNECTORS": "Connector", "HARDWARE": "Hardware", "MISC": "Misc"}
 _GRID_REF = re.compile(r"^[A-Za-z]{1,8}\d{0,3}$")
+# what a column of references looks like, strictly enough that a paragraph's left
+# margin ("The", "the", "a") is not mistaken for one
+_GRID_COL_REF = re.compile(r"^([A-Za-z]{1,4}\d{1,3}|[A-Z]{2,10})$")
 VALUE_TYPES = {"resistor", "capacitor", "capacitor_polarized", "inductor", "ldr", "pot", "trimmer"}
 PART_TYPES = {"npn", "pnp", "njfet", "pjfet", "nmos", "pmos", "diode", "zener", "schottky",
               "opamp_single", "opamp_dual", "lm386", "ic"}
@@ -64,6 +67,24 @@ def _lines(words: list, tol: float = 2.5) -> list[tuple[float, list]]:
     return [(yc, sorted(ws, key=lambda w: w[0])) for yc, ws in lines]
 
 
+# a cell may open with a footnote mark or an aside — "R20 * 10K-22K", "MAX (trimpot) 50K"
+_GRID_ASIDE = re.compile(r"^(\*{1,3}|\(.*\))$")
+_GRID_MARK = re.compile(r"^\*{1,3}$")
+
+
+def _next_ref(ref_cols: set, x: float) -> float:
+    after = [c for c in ref_cols if c > x]
+    return min(after) if after else float("inf")
+
+
+def _value_start(cw: list):
+    """The first word of a cell that is the value itself, past any mark or aside."""
+    for w in cw[1:]:
+        if not _GRID_ASIDE.match(w[4]):
+            return w
+    return cw[-1]
+
+
 def _grid_rows(page, pno: int) -> list[Row]:
     """A parts list laid out as columns of ref/value pairs under bold section headings.
 
@@ -92,7 +113,7 @@ def _grid_rows(page, pno: int) -> list[Row]:
         bins.setdefault(round(w[0] * 2) / 2, []).append(w)
     cols = {x: ws for x, ws in bins.items() if len(ws) >= 3}
     ref_cols = {x for x, ws in cols.items()
-                if sum(bool(_GRID_REF.match(w[4])) for w in ws) >= 0.6 * len(ws)}
+                if sum(bool(_GRID_COL_REF.match(w[4])) for w in ws) >= 0.6 * len(ws)}
     if not ref_cols:
         return []
 
@@ -115,21 +136,29 @@ def _grid_rows(page, pno: int) -> list[Row]:
         for w in ws:
             if col_of(w) in ref_cols and _GRID_REF.match(w[4]):
                 cells.append((col_of(w), [w]))
-            elif cells:
-                cells[-1][1].append(w)
+            elif cells and w[0] < _next_ref(ref_cols, cells[-1][0]):
+                cells[-1][1].append(w)     # a cell ends where the next pair of columns starts
         # a real row: the value starts in a column of its own, not mid-sentence
-        cells = [(x, cw) for x, cw in cells if len(cw) > 1 and (col_of(cw[1]) in cols and col_of(cw[1]) not in ref_cols)]
+        cells = [(x, cw) for x, cw in cells if len(cw) > 1
+                 and (col_of(_value_start(cw)) in cols and col_of(_value_start(cw)) not in ref_cols)]
         if not cells:
             continue
         limit = 3 * statistics.median(steps) if steps else 60.0
         if rows and y - last_y > limit:
             break                                          # past the list: prose, another section
         for x, cw in cells:
-            value = " ".join(w[4] for w in cw[1:])
+            body_words = cw[1:]
+            lead = 0                                       # marks and asides before the value
+            while lead < len(body_words) - 1 and _GRID_ASIDE.match(body_words[lead][4]):
+                lead += 1
+            aside = [w[4] for w in body_words[:lead]]
+            rest = body_words[lead:]
+            aside += [w[4] for w in rest if _GRID_MARK.match(w[4])]
+            value = " ".join(w[4] for w in rest if not _GRID_MARK.match(w[4]))
             mark = re.search(r"\**$", value).group(0)      # 47K*, 4.7K-22K**: a footnote
             kind = [k for hy, hx, k in head_col if hx == x and hy < y]
             rows.append(Row(cw[0][4], value[:len(value) - len(mark)] or value,
-                            kind[-1] if kind else "", mark, pno))
+                            kind[-1] if kind else "", " ".join(aside + ([mark] if mark else [])), pno))
         steps.append(y - last_y)
         last_y = y
     return rows

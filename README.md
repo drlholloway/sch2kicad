@@ -75,7 +75,11 @@ Aion FX) is in
   `Label`), `TH_NPN`/`TH_PNP` (E-B-C), `TH_JFET`, `TH_Op_amp_Dual`, the 3PDT
   pad array for IN/OUT/GND. A transistor in another lead order gets the stock
   KiCad symbol for that order on the same TO-92 footprint. Other ICs (TL071,
-  LM13700) use the stock KiCad symbol on a DIP package picked by pin count.
+  LM13700, the 4000-series logic) use the stock KiCad symbol on a DIP package
+  picked by pin count. A part KiCad has no symbol for at all — so far the
+  CD4517 — comes from `src/sch2kicad/data/symbols/sch2kicad.kicad_sym`, which
+  is copied into the built project with a `sym-lib-table` so it still resolves
+  when the project is opened.
 - **smd** — 0805 passives, SMD electrolytics, SOT-23 transistors on symbols in
   SOT-23 order (B-E-C), SOIC op-amps; panel parts stay through-hole.
 
@@ -95,9 +99,10 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   (60 of 60; 4558 power units on their own filtered rails, TL071 VREF buffer),
   the Aion FX Tri-Vibe (66 of 66; a vector schematic, the LM13700's OTAs and
   buffers) and Parasit Studio's Theremin Fuzz (33 of 34; CD4069/CD4013/CD4046 on
-  stock symbols), all regression cases. Parts lists are read from PedalPCB, Aion
-  FX and Parasit Studio docs. Next: Parasit Studio's Higgs Particle Phaser, which
-  needs a CD4517 symbol.
+  stock symbols) and their Higgs Particle Phaser (47 of 50; three CD4517 dual
+  shift registers on the tool's own symbol), all regression cases. Parts lists
+  are read from PedalPCB, Aion FX and Parasit Studio docs. Next: the M2
+  cross-check, then a pass over the layout.
 
 ## Development
 

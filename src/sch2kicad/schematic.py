@@ -14,7 +14,7 @@ from pathlib import Path
 
 from . import sexpr
 from .geometry import GRID, Orient, apply
-from .kicad_env import GENERATOR, SCH_FILE_VERSION
+from .kicad_env import BUNDLED_SYM_LIB, GENERATOR, SCH_FILE_VERSION, bundled_symbols
 from .sexpr import Q
 from .symlib import LibSymbol
 
@@ -193,15 +193,76 @@ class SchematicWriter:
         return path
 
 
-def write_project(path: Path, root_uuid: str) -> Path:
+# KiCad's default ERC pin-conflict matrix (0 ok, 1 warning, 2 error), in the pin-type
+# order of ELECTRICAL_PINTYPE: input, output, bidi, tristate, passive, free,
+# unspecified, power in, power out, open collector, open emitter, not connected
+_PIN_MAP = [
+    [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 2],
+    [0, 2, 0, 1, 0, 0, 1, 0, 2, 2, 2, 2],
+    [0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 2],
+    [0, 1, 0, 0, 0, 0, 1, 1, 2, 1, 1, 2],
+    [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 2],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2],
+    [1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 2],
+    [0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 2],
+    [0, 2, 1, 2, 0, 0, 1, 0, 2, 2, 2, 2],
+    [0, 2, 1, 2, 0, 0, 1, 0, 2, 0, 0, 2],
+    [0, 2, 1, 1, 0, 0, 1, 0, 2, 0, 0, 2],
+    [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+]
+_POWER_OUT, _OPEN_COLLECTOR, _OPEN_EMITTER = 8, 9, 10
+
+
+def _pin_map_allowing_open_on_power() -> list[list[int]]:
+    """A transistor pin on a rail is normal; KiCad's default matrix calls it a conflict.
+
+    The house transistor symbols type collector and emitter as open drivers, so a
+    grounded emitter — or a collector on the supply — meets the net's PWR_FLAG and
+    errors. Only that pair is allowed; every other conflict keeps KiCad's severity.
+    """
+    pin_map = [row[:] for row in _PIN_MAP]
+    for other in (_OPEN_COLLECTOR, _OPEN_EMITTER):
+        pin_map[_POWER_OUT][other] = 0
+        pin_map[other][_POWER_OUT] = 0
+    return pin_map
+
+
+def write_project(path: Path, root_uuid: str, allow_open_on_power: bool = False) -> Path:
     """Minimal .kicad_pro; KiCad fills in every default on first open."""
     data = {
         "meta": {"filename": path.name, "version": 3},
         "sheets": [[root_uuid, "Root"]],
         "text_variables": {},
     }
+    if allow_open_on_power:
+        data["erc"] = {"erc_exclusions": [], "meta": {"version": 0},
+                       "pin_map": _pin_map_allowing_open_on_power(), "rule_severities": {}}
     path.write_text(json.dumps(data, indent=2) + "\n")
     return path
+
+
+def copy_bundled_symbols(out_dir: Path, lib_ids) -> Path | None:
+    """A symbol KiCad has no library for travels with the project.
+
+    The schematic embeds its own copy of every symbol, so it opens either way,
+    but without the library KiCad calls the symbol missing and ERC complains.
+    """
+    if not any(str(lib_id).startswith(BUNDLED_SYM_LIB + ":") for lib_id in lib_ids):
+        return None
+    dest = out_dir / bundled_symbols().name
+    dest.write_text(bundled_symbols().read_text())
+    table = out_dir / "sym-lib-table"
+    uri = "${KIPRJMOD}/" + dest.name
+    entry = f'  (lib (name "{BUNDLED_SYM_LIB}") (type "KiCad") (uri "{uri}") (options "") (descr "symbols sch2kicad ships for parts KiCad has none of"))'
+    if table.exists() and BUNDLED_SYM_LIB in table.read_text():
+        return dest
+    if table.exists():   # keep whatever else the project already lists
+        text = table.read_text().rstrip()
+        text = text[:text.rindex(")")].rstrip() + "\n" + entry + "\n)\n"
+    else:
+        text = "(sym_lib_table\n  (version 7)\n" + entry + "\n)\n"
+    table.write_text(text)
+    return dest
 
 
 def field_positions(inst: SymbolInstance, box: tuple[float, float, float, float],

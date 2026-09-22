@@ -100,9 +100,14 @@ in it.
 
 **Parasit Studio** — OpenOffice "Build Document" PDFs, schematic on the last
 page, embedded as a low-resolution image **rotated 90° inside the image** —
-ingest turns it upright; confirm on `grid.png`. Dense CD40xx logic at ~2000 px,
-and the dot finder gets little from it: read tiles slowly at 4-6x, pin numbers
-matter. Two kinds of net marker: octagons (`IN`, `OUT`, `+9V`, `VA` — a crossed
+ingest turns it upright; confirm on `grid.png`. Dense CD40xx logic at ~2000 px:
+read tiles slowly at 4-6x, pin numbers matter. Their newer sheets are drawn in
+KiCad (the Higgs, 2024), and those render cleanly enough that `dots.json` is
+worth having — on the Higgs it found all 40 junctions and nothing else, so it
+is a real check on a reading: list the dots, account for every one, and be sure
+no junction you drew is missing from the list. A dangling wire end shows as a
+small open square (an unconnected output; `"NC"` in `circuit.json`). Two kinds
+of net marker: octagons (`IN`, `OUT`, `+9V`, `VA` — a crossed
 octagon is a rail) and arrows with a name beside a pin (`INPUT`, `GND`,
 `OUTPUT`, or an auto-generated `Net 10`). The same node can carry both
 spellings — the Theremin Fuzz has `IN`/`INPUT` and `OUT`/`OUTPUT` — so make
@@ -112,6 +117,8 @@ units (`U1.1`-`U1.6`, `U2.1`) plus a separate box with the supply pins (`VDD`,
 `VSS`): give that box its own `ic` entry with only `supply`, positioned, and it
 is placed where it is drawn. Unit numbers follow the datasheet, so they match
 KiCad's; a part number like `CD4069UBE` finds the stock `4xxx:4069` by itself.
+`CD4517` has no KiCad symbol and comes from the tool's own library instead
+(`sch2kicad:CD4517`, halves A/B and a supply unit C, pins as TI numbers them).
 Unused gates are drawn with their inputs grounded — keep them, a floating CMOS
 input is a fault. Boards carry **build options**: pads (`A`, `B`, `C`, `X`) for
 links or an off-board switch, a second set of pads for another pot, a resistor
@@ -119,7 +126,12 @@ to leave out. The doc's "Build Options" page says what each build needs; ask
 the user which one to draw. The status LED and its resistor are wired off the
 board. The parts list is a grid of ref/value column pairs under bold headings
 ("Capacitors", "Resistors", "IC's"...), which ingest reads into `bom`; the
-heading becomes the row's type and a `*` footnote goes to the row's notes. It
+heading becomes the row's type, and a footnote mark or an aside in the cell
+(`R20 * 10K–22K`, `MAX (trimpot) 50K`) goes to the row's notes. Its "BOM Notes"
+can overrule the drawing — on the Higgs the rate LED's resistor is 4.7K on the
+sheet and "10K–22K, at least 10K to reduce ticking" in the list; ask which to
+build and say so in a note. Where a value is a range, pick one and put the
+reason in `bom_accept`. It
 names pots and switches by function (`VOLUME`, `TRIMPOT`, `Octave`) where the
 drawing uses `VOL`, `TRIM1`, `SW1` — put the drawn name in `label` and the
 check pairs them up. The sheet asks not to be reposted — keep conversions

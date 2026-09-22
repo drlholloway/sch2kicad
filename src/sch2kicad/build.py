@@ -15,11 +15,13 @@ from .geometry import GRID, Layout, Orient, Placed, apply, fit_orientation, pin_
 from .kicad_env import kicad_cli
 from .parts import Profile, Resolved, canonical_pin, load_profile, resolve_all
 from .router import NetRoute, Router, Terminal, cell_of, normalise
-from .schematic import SchematicWriter, SymbolInstance, field_positions, write_project
+from .schematic import (SchematicWriter, SymbolInstance, copy_bundled_symbols, field_positions,
+                        write_project)
 from .symlib import LibSymbol, SymbolResolver
 
 RED = (200, 0, 0, 1)
 GREY = (90, 90, 90, 1)
+OPEN_PINS = {"open_emitter", "open_collector"}
 
 
 @dataclass
@@ -123,6 +125,7 @@ class Builder:
         self.text_boxes: list[tuple] = []           # visible field text of placed symbols
         self.flag_stubs: dict[str, list] = {}     # routed net → PWR_FLAG stub segments
         self.flag_pins: dict[str, list] = {}      # routed net → PWR_FLAG pin points
+        self.open_on_power: set[str] = set()      # nets with an open driver pin and a PWR_FLAG
 
     # ............................................................ helpers
     def pin_net(self, pl: Placed, number: str) -> str | None:
@@ -309,6 +312,12 @@ class Builder:
             if len(ts) == 1 and net not in flagged:
                 self.problems.append(f"net {net} connects to only {ts[0].owner}")
 
+        if self.open_on_power:
+            self.notes.append(
+                "the house transistor symbols call collector and emitter open drivers, which "
+                "KiCad's default ERC reads as a conflict with the PWR_FLAG on "
+                f"{', '.join(sorted(self.open_on_power))}; the project's ERC matrix allows that "
+                "one pair, so a grounded emitter is not an error")
         self._texts()
         self._groups(terms)
         tb = dict(self.c.title_block)
@@ -325,7 +334,8 @@ class Builder:
         sch = out_dir / f"{self.project}.kicad_sch"
         pro = out_dir / f"{self.project}.kicad_pro"
         self.w.write(sch)
-        write_project(pro, self.w.root_uuid)
+        write_project(pro, self.w.root_uuid, allow_open_on_power=bool(self.open_on_power))
+        copy_bundled_symbols(out_dir, self.w.lib_symbols)
         _kicad_resave(sch)
         expected = self.expected_netlist()
         moved = [p.res.ref for p in lay.placed if p.moved and p.res.part.type != "port"]
@@ -488,6 +498,12 @@ class Builder:
             # that would be an output-to-power-output conflict; verify explains the ERC note
             if (self._draw_as_flags(net) or "power_in" in types) and not types & {"output", "power_out"}:
                 need.append(net)
+                if types & OPEN_PINS:
+                    # the house transistor symbols call their emitter and collector open
+                    # drivers, and KiCad's default matrix calls those a conflict with the
+                    # PWR_FLAG this net needs — which every grounded emitter and every
+                    # collector on the supply would raise
+                    self.open_on_power.add(net)
         if not need:
             return
         pwr = self.symbols.get(self.profile.pwr_flag)

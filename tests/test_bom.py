@@ -101,3 +101,20 @@ def test_extract_aion_parts_list():
     assert next(r for r in rows if r.ref == "IC4").type == "Transconductance amplifier, dual, DIP16"
     reading = json.loads((SAMPLES / "circuits" / "trivibe-aionfx.circuit.json").read_text())
     assert reading["bom"] == bom.rows_json(rows)
+
+
+@pytest.mark.skipif(not (SAMPLES / "Higgs-Particle-Phaser-doc.pdf").exists(), reason="third-party PDF not present")
+def test_extract_parasit_grid_with_notes_and_marks():
+    """The Higgs list puts footnote marks and an aside inside the cell, and prose right
+    under the list: neither may swallow a row or invent a column."""
+    rows = bom.extract(SAMPLES / "Higgs-Particle-Phaser-doc.pdf")
+    assert len(rows) == 50 and bom.pages(rows) == "4"
+    by_ref = {r.ref: r for r in rows}
+    assert by_ref["R1"].type == "Resistor"              # the heading sits over the ref column
+    assert (by_ref["U4"].value, by_ref["U4"].type) == ("CD4517", "IC")
+    assert (by_ref["C14"].value, by_ref["C14"].notes) == ("100nF", "**")     # mark before the value
+    assert (by_ref["MAX"].value, by_ref["MAX"].notes) == ("50K", "(trimpot) ***")
+    assert by_ref["R20"].value == "10K–22K" and by_ref["R21"].value == "10K–22K"
+    assert by_ref["D1"].value == "1N4001"               # its own column, on R20's line
+    reading = json.loads((SAMPLES / "circuits" / "higgs-phaser-parasit.circuit.json").read_text())
+    assert reading["bom"] == bom.rows_json(rows)

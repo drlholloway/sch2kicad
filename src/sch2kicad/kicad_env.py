@@ -21,6 +21,11 @@ from . import sexpr
 KICAD_MAJOR = "10.0"
 SCH_FILE_VERSION = "20260306"  # what KiCad 10.0 writes
 GENERATOR = "sch2kicad"
+BUNDLED_SYM_LIB = "sch2kicad"  # parts KiCad has no symbol for, shipped with the tool
+
+
+def bundled_symbols() -> Path:
+    return Path(__file__).parent / "data" / "symbols" / f"{BUNDLED_SYM_LIB}.kicad_sym"
 
 
 def _mac_app() -> Path:
@@ -140,6 +145,8 @@ def lib_table(kind: str, project_dir: Path | None = None) -> LibTable:
         _read_table(user, libs, extra, seen)
     else:  # fresh install: fall back to the stock table
         _read_table(shared_support() / "template" / fname, libs, extra, seen)
+    if kind == "sym":  # the tool's own symbols, unless a table of theirs claims the name
+        libs.setdefault(BUNDLED_SYM_LIB, bundled_symbols())
     return LibTable(kind, libs)
 
 

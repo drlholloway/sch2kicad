@@ -56,7 +56,7 @@ deliberately unconnected and gets a no-connect flag.
 | `njfet`, `pjfet`, `nmos`, `pmos` | `G`, `D`, `S` | ditto |
 | `opamp_dual` | `+`, `-`, `out` per unit | `unit: "A"`/`"B"`; power in `supply` |
 | `opamp_single` | `+`, `-`, `out` | `part` must be a known symbol (TL071, LM741...) |
-| `lm386`, `ic` | pin numbers `"1"`…`"16"` | `ic` needs `lib_id` unless `part` is in the profile's `named_parts` (suffix grades match: `LM13700N` → `LM13700`). A multi-unit IC's unit is the one holding the listed pin numbers, so `unit` can keep the drawing's name (`A`, `BUF1`); the report says which KiCad unit it became. The package comes from the profile by pin count (DIP-8/14/16, SOIC for smd) |
+| `lm386`, `ic` | pin numbers `"1"`…`"16"` | `ic` needs `lib_id` unless `part` is in the profile's `named_parts` (suffix grades match: `LM13700N` → `LM13700`). A multi-unit IC's unit is the one holding the listed pin numbers, so `unit` can keep the drawing's name (`A`, `BUF1`); the report says which KiCad unit it became. The package comes from the profile by pin count (DIP-8/14/16, SOIC for smd). A part with no KiCad symbol can come from the tool's own library (`CD4517` → `sch2kicad:CD4517`), which is copied into the built project |
 | `switch_spdt` | `com`, `a`, `b` | throws are interchangeable |
 | `switch_dpdt` | `com`, `a`, `b` per pole | `unit: "A"`/`"B"` |
 

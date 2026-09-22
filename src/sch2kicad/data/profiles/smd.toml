@@ -39,6 +39,8 @@ nmos = "GSD"
 [named_parts]
 TL071 = "Amplifier_Operational:TL071"
 LM13700 = "Amplifier_Operational:LM13700"
+# KiCad ships no CD4517; the symbol travels with the project
+CD4517 = "sch2kicad:CD4517"
 
 [[footprints]]
 type = ["diode", "schottky"]

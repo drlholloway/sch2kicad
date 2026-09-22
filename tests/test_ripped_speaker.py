@@ -137,3 +137,37 @@ def test_cmos_logic_symbols_and_drawn_power_units():
     assert all(pin.at for r in power.values() for pin in r.part.pins.values())
     assert power["U1G"].pinmap == {"VDD": "14", "VSS": "7"}
     assert all(r.problems == [] for r in res)
+
+
+def test_shipped_symbol_library_travels_with_the_project(tmp_path):
+    """KiCad has no CD4517: the symbol comes from the tool's own library, and the built
+    project gets a copy of it and a sym-lib-table so the lib_id still resolves."""
+    from sch2kicad.circuit import load
+    from sch2kicad.parts import load_profile, resolve_all
+    circuit = HERE.parent / "samples" / "circuits" / "higgs-phaser-parasit.circuit.json"
+    c = load(circuit)
+    res = {r.part.key: r for r in resolve_all(c, load_profile("tht"), SymbolResolver())}
+    assert res["U4A"].lib_id == "sch2kicad:CD4517"
+    # the halves are told apart by their pin numbers, and unit C is the supply box
+    assert (res["U4A"].unit, res["U4B"].unit, res["U4C"].unit) == (1, 2, 3)
+    assert res["U4C"].pinmap == {"VDD": "16", "VSS": "8"}
+    assert res["U4A"].footprint == "Package_DIP:DIP-16_W7.62mm"
+    out = tmp_path / "board"
+    build(circuit, out)
+    assert (out / "sch2kicad.kicad_sym").exists()
+    assert 'name "sch2kicad"' in (out / "sym-lib-table").read_text()
+
+
+def test_open_driver_on_a_power_net_is_allowed(tmp_path):
+    """The house transistor symbols call collector and emitter open drivers; a grounded
+    emitter then meets the net's PWR_FLAG, which KiCad's default matrix calls an error."""
+    import json as _json
+    circuit = HERE.parent / "samples" / "circuits" / "higgs-phaser-parasit.circuit.json"
+    res = build(circuit, tmp_path / "board")          # Q1's emitter sits on GND
+    pin_map = _json.loads(res.pro.read_text())["erc"]["pin_map"]
+    assert pin_map[8][9] == 0 and pin_map[8][10] == 0     # power out against open collector/emitter
+    assert pin_map[8][8] == 2                             # two power outputs still conflict
+    assert any("open drivers" in n for n in res.notes)
+    other = build(HERE.parent / "samples" / "circuits" / "theremin-fuzz-parasit.circuit.json",
+                  tmp_path / "other")                 # no transistor: no override
+    assert "erc" not in _json.loads(other.pro.read_text())

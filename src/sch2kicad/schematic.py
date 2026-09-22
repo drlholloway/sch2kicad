@@ -70,6 +70,7 @@ class SchematicWriter:
         self.title_block: dict = {}
         self.symbols: list[SymbolInstance] = []
         self.groups: list[tuple[str, list[str]]] = []
+        self.wires: list[tuple[tuple[float, float], tuple[float, float]]] = []
         self._auto: dict[str, int] = {}
 
     # ............................................................... symbols
@@ -115,6 +116,7 @@ class SchematicWriter:
         u = new_uuid()
         self.items.append(["wire", ["pts", ["xy", a[0], a[1]], ["xy", b[0], b[1]]],
                            ["stroke", ["width", 0], ["type", "default"]], ["uuid", Q(u)]])
+        self.wires.append((a, b))
         return u
 
     def junction(self, p) -> str:
@@ -265,30 +267,83 @@ def copy_bundled_symbols(out_dir: Path, lib_ids) -> Path | None:
     return dest
 
 
+FIELD_LINE = 1.524          # mm between stacked field lines
+_SHIFTS = (0.0, 1.27, -1.27, 2.54, -2.54, 3.81, -3.81, 5.08, -5.08, 6.35, -6.35)
+_PUSHES = (0.0, 1.27, 2.54, 3.81, 5.08, 6.35)
+
+
+def text_box(at: tuple[float, float], text: str) -> tuple[float, float, float, float]:
+    """Rough extent of centred 1.27 mm field text.
+
+    Always horizontal: a property's stored angle is read in the symbol's own frame,
+    so the 90° written for a turned symbol is what makes its text read across the
+    page (see ``_symbol_node``), not up it.
+    """
+    w = max(len(text), 1) * 0.95
+    return (at[0] - w / 2, at[1] - 0.85, at[0] + w / 2, at[1] + 0.85)
+
+
+def _overlap_area(a, b) -> float:
+    return max(0.0, min(a[2], b[2]) - max(a[0], b[0])) * max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+
+
 def field_positions(inst: SymbolInstance, box: tuple[float, float, float, float],
-                    pin_dirs: list[tuple[int, int]], names: list[str]) -> dict[str, tuple[float, float]]:
-    """Stack Reference / Value / Label beside the body, on a side without pins."""
+                    pin_dirs: list[tuple[int, int]], names: list[str],
+                    blocked: list[tuple[float, float, float, float]] = ()) -> dict[str, tuple[float, float]]:
+    """Stack Reference / Value / Label beside the body, clear of pins and of everything else.
+
+    Sides without pins come first, then the rest; on each side the stack slides
+    along the body and steps further out until it lands on nothing in
+    ``blocked`` (other symbols' bodies and pin lines, text already placed). When
+    every spot is taken, the one that covers the least wins: a value half over a
+    wire still reads, and a value is worth more than a tidy rule.
+    """
     x0, y0, x1, y1 = box
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
     used = set(pin_dirs)
-    line = 1.524
+    line = FIELD_LINE
     n = len(names)
-    widths = [max(len(_visible_text(inst, k)), 1) * 0.95 for k in names]
-    wmax = max(widths) if widths else 3
+    texts = [_visible_text(inst, k) for k in names]
+    wmax = max((max(len(t), 1) * 0.95 for t in texts), default=3)
+    thick = (n - 1) * line + 1.7
+    hx, hy = wmax / 2, thick / 2
 
-    def stack(x: float, ytop: float) -> dict:
-        return {k: (round(x, 3), round(ytop + i * line, 3)) for i, k in enumerate(names)}
+    def stack(sx: float, sy: float) -> dict:
+        """Centre of the whole stack → where each line goes."""
+        return {k: (round(sx, 3), round(sy + (i - (n - 1) / 2) * line, 3))
+                for i, k in enumerate(names)}
 
-    if (1, 0) not in used:           # right side free
-        return stack(x1 + 0.8 + wmax / 2, cy - (n - 1) * line / 2)
-    if (-1, 0) not in used:          # left side free
-        return stack(x0 - 0.8 - wmax / 2, cy - (n - 1) * line / 2)
-    if (0, -1) not in used:          # above
-        return stack(cx, y0 - 1.0 - (n - 1) * line)
-    if (0, 1) not in used:           # below
-        return stack(cx, y1 + 1.6)
-    # pins on every side (an op-amp drawn with its power pins): upper right, above the output
-    return stack(x1 + 0.8 + wmax / 2, cy - 2.2 - (n - 1) * line)
+    def at_side(side: tuple[int, int], push: float, slide: float) -> dict:
+        if side == (1, 0):
+            return stack(x1 + 0.8 + hx + push, cy + slide)
+        if side == (-1, 0):
+            return stack(x0 - 0.8 - hx - push, cy + slide)
+        if side == (0, -1):
+            return stack(cx + slide, y0 - 0.8 - hy - push)
+        return stack(cx + slide, y1 + 0.8 + hy + push)
+
+    def spoilt(pos: dict) -> float:
+        """How much of the text lands on something — 0 when it is in the clear."""
+        return sum(_overlap_area(text_box(pos[k], t), b)
+                   for k, t in zip(names, texts) for b in blocked)
+
+    order = [(1, 0), (-1, 0), (0, -1), (0, 1)]
+    free = [s for s in order if s not in used]
+    first = at_side(free[0], 0.0, 0.0) if free else at_side((1, 0), 0.0, -2.2 - hy)
+    if not blocked:
+        return first
+    best, worst = first, spoilt(first)
+    for sides in (free, [s for s in order if s in used]):
+        for push in _PUSHES:
+            for slide in _SHIFTS:
+                for side in sides:
+                    pos = at_side(side, push, slide)
+                    hidden = spoilt(pos)
+                    if hidden <= 0:
+                        return pos
+                    if hidden < worst:     # nowhere is clear: covered least still reads best
+                        best, worst = pos, hidden
+    return best
 
 
 def _visible_text(inst: SymbolInstance, name: str) -> str:

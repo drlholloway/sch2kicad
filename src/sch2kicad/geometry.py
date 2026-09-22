@@ -227,8 +227,19 @@ def estimate_scale(placed: list[Placed]) -> float:
     return statistics.median(ratios)
 
 
+BODY_GAP = 1.27     # mm of daylight two bodies want between them; below that, say so
+
+
 def _boxes_overlap(a, b) -> bool:
     return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+def _gap(a, b) -> float:
+    return math.hypot(max(a[0] - b[2], b[0] - a[2], 0.0), max(a[1] - b[3], b[1] - a[3], 0.0))
+
+
+def _area(box) -> float:
+    return (box[2] - box[0]) * (box[3] - box[1])
 
 
 def _point_in(box, p) -> bool:
@@ -366,6 +377,22 @@ class Layout:
                 return pl.origin
         pl.origin = (ox, oy)
         return None
+
+    def cramped(self) -> list[tuple[str, str]]:
+        """Pairs of parts left with no daylight between their bodies.
+
+        A source can draw a part far smaller than KiCad's symbol of it — Parasit draw
+        a chip's supply as a box a tenth the size of KiCad's power unit — so placing
+        them where the drawing puts them leaves them touching. Easing them apart costs
+        more than it buys (the rail that feeds them then has to thread between them and
+        falls back to labels), so the sheet says which ones to pull apart by hand.
+        """
+        out = []
+        for i, a in enumerate(self.placed):
+            for b in self.placed[i + 1:]:
+                if _gap(a.box(), b.box()) < BODY_GAP and _area(a.box()) and _area(b.box()):
+                    out.append(tuple(sorted((a.res.part.key, b.res.part.key))))
+        return sorted(set(out))
 
     def bounds(self, margin: float = 0.0) -> tuple[float, float, float, float]:
         exts = [p.extent() for p in self.placed]

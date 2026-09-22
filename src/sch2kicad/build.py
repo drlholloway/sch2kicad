@@ -16,7 +16,7 @@ from .kicad_env import kicad_cli
 from .parts import Profile, Resolved, canonical_pin, load_profile, resolve_all
 from .router import NetRoute, Router, Terminal, cell_of, normalise
 from .schematic import (SchematicWriter, SymbolInstance, copy_bundled_symbols, field_positions,
-                        write_project)
+                        text_box as _text_box, write_project)
 from .symlib import LibSymbol, SymbolResolver
 
 RED = (200, 0, 0, 1)
@@ -126,6 +126,7 @@ class Builder:
         self.flag_stubs: dict[str, list] = {}     # routed net → PWR_FLAG stub segments
         self.flag_pins: dict[str, list] = {}      # routed net → PWR_FLAG pin points
         self.open_on_power: set[str] = set()      # nets with an open driver pin and a PWR_FLAG
+        self.flag_boxes: list[tuple] = []         # every flag symbol drawn, with its value text
 
     # ............................................................ helpers
     def pin_net(self, pl: Placed, number: str) -> str | None:
@@ -143,14 +144,91 @@ class Builder:
     def all_placed(self) -> list[Placed]:
         return self.layout.placed + self.layout.unplaced
 
+    def _beside_kin(self, pl: Placed) -> bool:
+        """Put an IC's power unit beside the amplifier it feeds, as a hand-drawn sheet does.
+
+        The source did not draw it anywhere, so there is nothing to be faithful to —
+        and a sheet reads far better with IC1's supply above IC1 than in a row of
+        anonymous power units under the drawing.
+        """
+        lay = self.layout
+        # beside one unit, not in the middle of them all: a dual op-amp's halves can sit
+        # at opposite corners, and the space between them belongs to the circuit
+        kin = sorted((p for p in lay.placed if p.res.ref == pl.res.part.ref and p is not pl),
+                     key=lambda p: p.res.unit)
+        if not kin:
+            return False
+        ex0, ey0, ex1, ey1 = pl.extent()
+        w, h = ex1 - ex0, ey1 - ey0
+        dx, dy = (ex0 + ex1) / 2 - pl.origin[0], (ey0 + ey1) / 2 - pl.origin[1]
+
+        def spot(k: Placed, side: int, gap: float):
+            x0, y0, x1, y1 = k.extent()
+            cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+            return ((cx, y0 - gap - h / 2), (x1 + gap + w / 2, cy),
+                    (x0 - gap - w / 2, cy), (cx, y1 + gap + h / 2))[side]
+
+        # Only where its own two rails still have somewhere to hang their flags — a power
+        # unit beside its amp is worth nothing if it costs the sheet two flags, and every
+        # one of these pins is a rail. Among the spots that work, take the one standing in
+        # the most open space: a big symbol dropped into a gap between parts is a wall the
+        # router then has to find its way around.
+        best, best_score = None, None
+        for gi, gap in enumerate((5.08, 7.62, 10.16, 12.7, 17.78)):
+            for side in (0, 1, 2, 3):
+                for k in kin:
+                    tx, ty = spot(k, side, gap)
+                    pl.origin = (snap(tx - dx), snap(ty - dy))
+                    if lay.conflicts(pl, lay.placed, margin=2.54) or not self._flag_room(pl):
+                        continue
+                    score = self._openness(pl) - 1.5 * gi - 0.5 * side
+                    if best_score is None or score > best_score:
+                        best, best_score = pl.origin, score
+        if best is None:
+            return False
+        pl.origin = best
+        return True
+
+    def _flag_room(self, pl: Placed, reach: float = 8.9, half: float = 2.54) -> bool:
+        """Is the space each pin points into clear enough for a flag symbol to stand there?"""
+        exts = [p.extent(0.5) for p in self.layout.placed if p is not pl]
+        for p in pl.pins():
+            tip = pl.pin_pos(p.number)
+            d = pl.pin_dir(p.number)
+            far = (tip[0] + d[0] * reach, tip[1] + d[1] * reach)
+            box = (min(tip[0], far[0]) - (half if d[0] == 0 else 0),
+                   min(tip[1], far[1]) - (half if d[1] == 0 else 0),
+                   max(tip[0], far[0]) + (half if d[0] == 0 else 0),
+                   max(tip[1], far[1]) + (half if d[1] == 0 else 0))
+            if any(_overlap(box, e) for e in exts):
+                return False
+        return True
+
+    def _openness(self, pl: Placed, reach: float = 25.4) -> float:
+        """How far the nearest other part is, capped: high means room to spare."""
+        me = pl.extent()
+        near = reach
+        for o in self.layout.placed:
+            if o is pl:
+                continue
+            e = o.extent()
+            gap = math.hypot(max(me[0] - e[2], e[0] - me[2], 0.0), max(me[1] - e[3], e[1] - me[3], 0.0))
+            near = min(near, gap)
+        return near
+
     def _place_unplaced(self) -> None:
         """Supply units and spare pads have no source position: park them tidily."""
         lay = self.layout
         spare_pads = [p for p in lay.unplaced if p.res.part.type == "port"]
-        others = [p for p in lay.unplaced if p.res.part.type != "port"]
+        others = []
+        for pl in [p for p in lay.unplaced if p.res.part.type != "port"]:
+            if pl.res.is_supply_unit and self._beside_kin(pl):
+                lay.placed.append(pl)
+            else:
+                others.append(pl)
         bx0, by0, bx1, by1 = lay.bounds()
         x = bx1
-        for pl in others:   # op-amp power units: a tidy row under the drawing, right to left
+        for pl in others:   # nowhere near their own IC: a tidy row under the drawing, right to left
             pl.origin = (snap(x - 7.62), snap(by1 + 17.78))
             if lay.conflicts(pl, lay.placed, margin=2.54):
                 lay.find_spot(pl, lay.placed, radius=30)
@@ -212,6 +290,7 @@ class Builder:
 
         # symbols and their obstacles
         insts: dict[str, SymbolInstance] = {}
+        specs: list[tuple[Placed, SymbolInstance, list[str]]] = []
         for pl in lay.placed:
             res = pl.res
             inst = SymbolInstance(lib=res.symbol, ref=res.ref, unit=res.unit, at=pl.origin, orient=pl.orient,
@@ -224,11 +303,22 @@ class Builder:
             if res.part.type == "port" and res.ref.startswith("Switch_Connectors"):
                 names = []
                 inst.hidden_fields |= {"Reference", "Value"}
+            specs.append((pl, inst, names))
+
+        # every body and pin line is known before the first field is placed, so a
+        # reference can be put where it does not land on another part. Small symbols
+        # choose first: a resistor has fewer places to put its text than an IC has.
+        parts_boxes = [_grow(pl.box(), 0.3) for pl in lay.placed] + [b for pl in lay.placed for b in _pin_boxes(pl)]
+        for pl, inst, names in sorted(specs, key=lambda s: _area(s[0].box())):
+            if not names:
+                continue
             dirs = [pl.pin_dir(p.number) for p in pl.pins()]
-            inst.field_pos = field_positions(inst, pl.box(), dirs, names) if names else {}
-            for k, at in inst.field_pos.items():   # flags keep off this text
-                self.text_boxes.append(_text_box(at, inst.value if k == "Value" else
-                                                 inst.ref if k == "Reference" else inst.fields.get(k, "")))
+            inst.field_pos = field_positions(inst, pl.box(), dirs, names,
+                                             blocked=parts_boxes + self.text_boxes)
+            for k, at in inst.field_pos.items():   # flags and wires keep off this text
+                self.text_boxes.append(_text_box(at, _field_text(inst, k)))
+
+        for pl, inst, names in specs:
             for k in list(inst.fields) + ["Value"]:
                 if k not in names:
                     inst.hidden_fields.add(k)
@@ -241,6 +331,8 @@ class Builder:
         for pl in lay.placed:
             for p in pl.pins():
                 router.open_escape(pl.pin_pos(p.number), pl.pin_dir(p.number), pl.key)
+        for box in self.text_boxes:
+            router.avoid(box)   # a wire may cross a value, but pays for it
 
         # terminals per net
         terms: dict[str, list[Terminal]] = {}
@@ -312,6 +404,14 @@ class Builder:
             if len(ts) == 1 and net not in flagged:
                 self.problems.append(f"net {net} connects to only {ts[0].owner}")
 
+        self._reflow_fields(specs)
+        tight = lay.cramped()
+        if tight:
+            self.notes.append(
+                "drawn touching, because the source draws these far smaller than KiCad's "
+                "symbols are: " + ", ".join(f"{a}/{b}" for a, b in tight)
+                + ". Pull them apart in KiCad if you want the room; moving them here costs "
+                "the rail that feeds them its wires.")
         if self.open_on_power:
             self.notes.append(
                 "the house transistor symbols call collector and emitter open drivers, which "
@@ -407,33 +507,47 @@ class Builder:
         upright = Orient(0, None)
         up_dir = tuple(int(round(v)) for v in apply(upright.m, *body_lib))
 
-        def attempt(path: list[tuple[float, float]], o: Orient):
+        def attempt(path: list[tuple[float, float]], o: Orient, over_text: bool):
             tip = path[-1]
             dx, dy = apply(o.m, pin.x, pin.y)
             origin = (round(tip[0] - dx, 4), round(tip[1] - dy, 4))
             box = _flag_box(sym, origin, o, value)
-            if (not self._box_free(box, router, net, None, 0) or not self._path_free(path, router, net)
-                    or any(_overlap(box, tb) for tb in self.text_boxes)):
+            if not self._box_free(box, router, net, None, 0) or not self._path_free(path, router, net):
+                return None
+            if not over_text and any(_overlap(box, tb) for tb in self.text_boxes):
                 return None
             return (path, o, origin, box)
 
         def pt(p, d, k):
             return (round(p[0] + d[0] * k, 4), round(p[1] + d[1] * k, 4))
 
+        near, far = (2.54, 3.81, 5.08), (2.54, 3.81, 5.08, 7.62)
         cands = []
         if t.out == up_dir:                        # pin already points the flag's way
             cands += [([t.pos, pt(t.pos, t.out, s)], upright) for s in (2.54, 3.81, 5.08, 1.27, 7.62)]
         elif t.out[1] == 0:                        # sideways pin: out, then turn to stand the flag up
             cands += [([t.pos, pt(t.pos, t.out, s1), pt(pt(t.pos, t.out, s1), up_dir, s2)], upright)
-                      for s1 in (2.54, 3.81, 5.08) for s2 in (2.54, 3.81, 5.08)]
+                      for s1 in far for s2 in far]
+        # step aside and come back to upright: the only way for a pin that points the
+        # wrong way, and a second chance for the rest when something is in the way
+        for s1 in near:
+            p1 = pt(t.pos, t.out, s1)
+            for side in ((1, 0), (-1, 0)) if t.out[1] else ((0, -1), (0, 1)):
+                for s2 in far:
+                    p2 = pt(p1, side, s2)
+                    cands += [([t.pos, p1, p2, pt(p2, up_dir, s3)], upright) for s3 in near]
         for s in (2.54, 3.81, 5.08, 1.27, 7.62):   # last resort: turn the flag to face the pin
             for o in (Orient(a, None) for a in (0, 90, 180, 270)):
                 bd = apply(o.m, *body_lib)
                 if (round(bd[0]), round(bd[1])) == t.out:
                     cands.append(([t.pos, pt(t.pos, t.out, s)], o))
         best = None
-        for path, o in cands:
-            best = attempt(path, o)
+        # a flag over a value is fixable — the fields move afterwards — so it beats no flag
+        for over_text in (False, True):
+            for path, o in cands:
+                best = attempt(path, o, over_text)
+                if best:
+                    break
             if best:
                 break
         if best is None:
@@ -460,6 +574,7 @@ class Builder:
         self.term_owner_items.setdefault(t.owner, []).extend(items)
         router.block_box(box, inflate=0.3)
         router.pin_net[cell_of(path[-1])] = net
+        self.flag_boxes.append(box)
         return True
 
     def _path_free(self, path, router: Router, net: str) -> bool:
@@ -531,33 +646,88 @@ class Builder:
             self.w.add_symbol(inst)
             self.w.wire((x, y), (x + 7.62, y))
             self.w.add_symbol(pinst)
-            router.block_box((x - 2.54, y - 6.35, x + 10.16, y + 6.35), inflate=0.3)
+            pair = (x - 2.54, y - 6.35, x + 10.16, y + 6.35)
+            router.block_box(pair, inflate=0.3)
+            self.flag_boxes.append(pair)
             x += 20.32
 
+    # ........................................................ field reflow
+    def _reflow_fields(self, specs) -> None:
+        """Move any field text a wire ended up crossing.
+
+        Placing text before routing can only guess where the wires will go; once they
+        are drawn it is no longer a guess. Text carries no connection, so moving it
+        cannot change the netlist — which is why this runs last rather than the router
+        being made to treat text as a wall.
+        """
+        wire_boxes = [_grow(_seg_box(a, b), 0.25) for a, b in self.w.wires]
+        world = list(self.flag_boxes) + wire_boxes
+        own: dict[int, list] = {}
+        for pl, inst, names in specs:
+            own[id(inst)] = [pl.box()] + _pin_boxes(pl)
+            world += own[id(inst)]
+        mine: dict[int, list] = {id(inst): _inst_boxes(inst) for _, inst, _ in specs}
+        for pl, inst, names in specs:
+            if not inst.field_pos:
+                continue
+            skip = {id(b) for b in own[id(inst)]}
+            around = ([b for b in world if id(b) not in skip]
+                      + [b for k, v in mine.items() if k != id(inst) for b in v])
+            if not any(_overlap(m, b) for m in mine[id(inst)] for b in around):
+                continue
+            dirs = [pl.pin_dir(p.number) for p in pl.pins()]
+            inst.field_pos = field_positions(inst, pl.box(), dirs, names, blocked=around)
+            mine[id(inst)] = _inst_boxes(inst)
+        self.text_boxes = [b for v in mine.values() for b in v]
+
     # ............................................................... texts
+    def _drawn_boxes(self) -> list[tuple]:
+        """Everything already on the sheet that a free-standing text should not land on."""
+        return ([pl.box() for pl in self.layout.placed] + list(self.text_boxes)
+                + list(self.flag_boxes)
+                + [b for pl in self.layout.placed for b in _pin_boxes(pl, 0.2)])
+
+    def _place_note(self, text: str, at: tuple[float, float], blocked: list[tuple]) -> tuple[float, float]:
+        """A voltage or a note belongs at the node it annotates; nudge it until it is legible."""
+        box = _note_box(at, text)
+        if not any(_overlap(box, b) for b in blocked) and not _crosses(self.w.wires, box):
+            return at
+        for r in (1, 2, 3, 4, 5, 6):
+            for dx, dy in ((0, -1), (0, 1), (1, 0), (-1, 0), (1, -1), (-1, -1), (1, 1), (-1, 1)):
+                p = (snap(at[0] + dx * r * GRID, 0.635), snap(at[1] + dy * r * GRID, 0.635))
+                box = _note_box(p, text)
+                if not any(_overlap(box, b) for b in blocked) and not _crosses(self.w.wires, box):
+                    return p
+        return at
+
     def _texts(self) -> None:
         lay = self.layout
+        blocked = self._drawn_boxes()
         for t in self.c.texts:
             if t.at is None:
                 continue
             p = lay.to_sheet(t.at)
+            p = (snap(p[0], 0.635), snap(p[1], 0.635))
+            p = self._place_note(t.text, p, blocked)
             color = GREY if t.kind == "voltage" else None
-            self.w.text(t.text, (snap(p[0], 0.635), snap(p[1], 0.635)), size=1.27, color=color,
-                        italic=t.kind == "voltage")
+            self.w.text(t.text, p, size=1.27, color=color, italic=t.kind == "voltage")
+            blocked.append(_note_box(p, t.text))
         bx0, by0, bx1, by1 = lay.bounds()
-        y = by1 + 30.48
+        # under everything, flags and parked power units included — not just under the parts
+        y = snap(max([by1 + 12.7] + [b[3] + 10.16 for b in self.flag_boxes]))
         if self.c.notes:
             # wrapped so a long note doesn't run far past the drawing
             lines = [ln for n in self.c.notes
                      for ln in textwrap.wrap(n, 110, subsequent_indent="   ") or [""]]
-            self.w.text("NOTES:\n" + "\n".join(lines), (snap(bx0), snap(y)), size=1.27, bold=False)
+            self.w.text("NOTES:\n" + "\n".join(lines), (snap(bx0), y), size=1.27, bold=False,
+                        justify=("left", "top"))
             y += 2.54 * (len(lines) + 2)
         for u in self.c.uncertain:
             label = "CHECK: " + u.note
             if u.at:
                 p = lay.to_sheet(u.at)
                 self.w.text("?", (snap(p[0], 0.635), snap(p[1], 0.635)), size=2.0, color=RED, bold=True)
-            self.w.text(label, (snap(bx0), snap(y)), size=1.27, color=RED)
+            self.w.text(label, (snap(bx0), y), size=1.27, color=RED, justify=("left", "top"))
             y += 2.54
 
     # .............................................................. groups
@@ -622,14 +792,66 @@ def _flag_box(sym: LibSymbol, origin, o: Orient, value: str = ""):
     return box
 
 
-def _text_box(at: tuple[float, float], text: str) -> tuple[float, float, float, float]:
-    """Rough extent of centred 1.27 mm field text."""
-    w = max(len(text), 1) * 0.95
-    return (at[0] - w / 2, at[1] - 0.85, at[0] + w / 2, at[1] + 0.85)
-
-
 def _union(a, b):
     return (min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]))
+
+
+def _grow(box, m: float):
+    return (box[0] - m, box[1] - m, box[2] + m, box[3] + m)
+
+
+def _seg_box(a, b):
+    return (min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1]))
+
+
+def _area(box) -> float:
+    return (box[2] - box[0]) * (box[3] - box[1])
+
+
+def _pin_boxes(pl: Placed, half: float = 0.5) -> list[tuple[float, float, float, float]]:
+    """A thin box along each pin's line, so text is not laid over the pin marks."""
+    out = []
+    for p in pl.pins():
+        tip = pl.pin_pos(p.number)
+        d = pl.pin_dir(p.number)
+        root = (tip[0] - d[0] * p.length, tip[1] - d[1] * p.length)
+        out.append((min(tip[0], root[0]) - half, min(tip[1], root[1]) - half,
+                    max(tip[0], root[0]) + half, max(tip[1], root[1]) + half))
+    return out
+
+
+def _note_box(at: tuple[float, float], text: str, size: float = 1.27):
+    """Extent of a left-justified, vertically centred free-standing text."""
+    lines = str(text).split("\n")
+    w = max((len(ln) for ln in lines), default=1) * size * 0.75
+    h = len(lines) * size * 1.2
+    return (at[0] - 0.3, at[1] - h / 2, at[0] + w + 0.3, at[1] + h / 2)
+
+
+def _crosses(wires, box) -> bool:
+    x0, y0, x1, y1 = box[0] + 0.3, box[1] + 0.3, box[2] - 0.3, box[3] - 0.3
+    if x1 <= x0 or y1 <= y0:
+        return False
+    for a, b in wires:
+        if abs(a[1] - b[1]) < 1e-6:
+            if y0 < a[1] < y1 and min(a[0], b[0]) < x1 and x0 < max(a[0], b[0]):
+                return True
+        elif abs(a[0] - b[0]) < 1e-6:
+            if x0 < a[0] < x1 and min(a[1], b[1]) < y1 and y0 < max(a[1], b[1]):
+                return True
+    return False
+
+
+def _inst_boxes(inst: SymbolInstance) -> list[tuple]:
+    return [_text_box(at, _field_text(inst, k)) for k, at in inst.field_pos.items()]
+
+
+def _field_text(inst: SymbolInstance, name: str) -> str:
+    if name == "Reference":
+        return inst.ref
+    if name == "Value":
+        return inst.value
+    return inst.fields.get(name, "")
 
 
 def _overlap(a, b) -> bool:

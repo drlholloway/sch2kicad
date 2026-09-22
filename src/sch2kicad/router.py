@@ -106,6 +106,17 @@ class Router:
                 self.hard.add((i, j))
                 self.box_owner.setdefault((i, j), set()).add(owner)
 
+    def avoid(self, box: tuple[float, float, float, float], cost: float = 2.5) -> None:
+        """Make a wire pay to cross something readable (a value, a reference).
+
+        Soft, never a wall: a net that can only be joined through a piece of text is
+        still joined — a detour is cosmetic, a missing wire is a dead board.
+        """
+        x0, y0, x1, y1 = box
+        for i in range(int(math.floor(x0 / GRID)), int(math.ceil(x1 / GRID)) + 1):
+            for j in range(int(math.floor(y0 / GRID)), int(math.ceil(y1 / GRID)) + 1):
+                self.soft[(i, j)] = self.soft.get((i, j), 0.0) + cost
+
     def block_pin(self, tip: tuple[float, float], out: tuple[int, int], length: float, net: str | None) -> None:
         """Pin tip belongs to ``net``; the pin's line back to the body is a wall."""
         c = grid_cell(tip, out)

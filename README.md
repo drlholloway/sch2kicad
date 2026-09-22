@@ -107,8 +107,17 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   buffers) and Parasit Studio's Theremin Fuzz (33 of 34; CD4069/CD4013/CD4046 on
   stock symbols) and their Higgs Particle Phaser (47 of 50; three CD4517 dual
   shift registers on the tool's own symbol), all regression cases. Parts lists
-  are read from PedalPCB, Aion FX and Parasit Studio docs. Next: the M2
-  cross-check, then a pass over the layout.
+  are read from PedalPCB, Aion FX and Parasit Studio docs.
+- **The sheet you get back (done):** a pass over the layout. Every reference,
+  value and knob name is placed where nothing else already is — clear of the
+  other parts, of their pins and of each other — and any that a wire ends up
+  crossing is moved afterwards, since text carries no connection and a wire
+  does. An IC's power unit stands beside the amplifier it feeds, in the most
+  open spot that still leaves its own rails room for their flags, instead of in
+  a row at the bottom of the sheet. Flags reach further and step around
+  obstacles before a pin settles for a net label. Notes and voltages keep off
+  the drawing. Across the eight samples nothing overlaps anything, and the
+  flags that used to fall back to labels are down from 13 to 5.
 
 ## Development
 

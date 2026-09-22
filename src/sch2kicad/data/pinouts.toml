@@ -1,0 +1,63 @@
+# Lead order of common pedal transistors, pin 1 → pin 3 as the package is
+# mounted on the board (TO-92: flat face toward you, leads down, left to right).
+#
+# Only list a part here when the order is not in doubt. A part that ships in
+# more than one order goes under [ambiguous] so the skill asks instead of
+# guessing: a wrong pinout is a dead board.
+
+[bjt]
+"2N3904" = "EBC"
+"2N3906" = "EBC"
+"2N4123" = "EBC"
+"2N4124" = "EBC"
+"2N4125" = "EBC"
+"2N4126" = "EBC"
+"2N4401" = "EBC"
+"2N4403" = "EBC"
+"2N5087" = "EBC"
+"2N5088" = "EBC"
+"2N5089" = "EBC"
+"MPSA13" = "EBC"
+"MPSA14" = "EBC"
+"MPSA18" = "EBC"
+"MPSA42" = "EBC"
+"MPSA92" = "EBC"
+"PN2222A" = "EBC"
+"PN2907A" = "EBC"
+"BC547" = "CBE"
+"BC548" = "CBE"
+"BC549" = "CBE"
+"BC550" = "CBE"
+"BC557" = "CBE"
+"BC558" = "CBE"
+"BC559" = "CBE"
+"BC560" = "CBE"
+"P2N2222A" = "CBE"
+
+[fet]
+"J201" = "DSG"
+"J113" = "DSG"
+"2N5457" = "DSG"
+"2N5458" = "DSG"
+"2N5459" = "DSG"
+"MPF102" = "DSG"
+"BS170" = "DGS"
+"2N7000" = "SGD"
+
+# Sold in more than one lead order, where Lane has chosen what through-hole
+# builds assume (2026-09-21: E-B-C). Every build that uses one says so in its
+# report, so the assumption never goes unseen.
+[assumed]
+"2N2222" = { order = "EBC", note = "TO-92 parts also come as C-B-E (ON Semi P2N2222A)" }
+"2N2222A" = { order = "EBC", note = "TO-92 parts also come as C-B-E (ON Semi P2N2222A)" }
+"2N2907" = { order = "EBC", note = "TO-92 parts also come as C-B-E (P2N2907A)" }
+"2N2907A" = { order = "EBC", note = "TO-92 parts also come as C-B-E (P2N2907A)" }
+
+# Sold in more than one lead order, or depends on the maker. Ask.
+[ambiguous]
+"BF245" = "BF245A/B/C lead order differs between makers"
+"MP38A" = "Soviet germanium; confirm against the actual parts"
+"AC128" = "germanium, confirm the lead order of the parts you have"
+"NKT275" = "germanium, confirm the lead order of the parts you have"
+"OC44" = "germanium, confirm the lead order of the parts you have"
+"2N404" = "germanium, confirm the lead order of the parts you have"

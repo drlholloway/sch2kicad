@@ -1,0 +1,22 @@
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+
+# conversion scratch output
+out/
+*-backups/
+fp-info-cache
+*.kicad_prl
+
+# third-party build docs and schematics stay on disk for testing but out of
+# git (some ask not to be reposted); the readings in samples/circuits/ are tracked
+samples/*.pdf
+samples/*.png
+samples/*.jpg
+samples/*.jpeg
+samples/*.sch2kicad/

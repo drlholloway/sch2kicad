@@ -1,0 +1,76 @@
+# SMD build for JLC assembly, Pedal Division library where it has the part.
+# Panel parts (pots, LEDs, switches, pads) stay through-hole.
+#
+# SOT-23 transistors do NOT share the TO-92 lead order: a board part is
+# B-E-C (BJT), D-S-G (JFET) or G-S-D (MOSFET) on pads 1-2-3. The symbol is
+# chosen for that order, so pad 1 carries the right net — TH_NPN on a SOT-23
+# footprint would swap B and E.
+
+name = "smd"
+description = "SMD (JLC assembly), Pedal Division library"
+
+[symbols]
+resistor = "2025_PedalDivision_Resistors:SMD_Resistor_0805"
+ldr = "2025_PedalDivision_Resistors:LDR"
+capacitor = "2025_PedalDivision_Capacitors:SMD_Cap_0805"
+capacitor_polarized = "2025_PedalDivision_Capacitors:SMD_Cap_D4"
+pot = "2025_PedalDivision_Potentiometers:16mm_Alpha_style"
+trimmer = "2025_PedalDivision_Potentiometers:Trim"
+diode = "2025_PedalDivision_Diodes:Generic"
+led = "2025_PedalDivision_Diodes:LED"
+npn = "Transistor_BJT:Q_NPN_BEC"
+pnp = "Transistor_BJT:Q_PNP_BEC"
+njfet = "2025_PedalDivision_Transistors:TH_JFET"      # D-S-G, matches SOT-23 JFETs
+nmos = "Transistor_FET:Q_NMOS_GSD"
+opamp_dual = "2025_PedalDivision_ICs:SMD_Op_amp_Dual"
+lm386 = "2025_PedalDivision_ICs:TH_LM386"
+switch_spdt = "2025_PedalDivision_Switches:SPDT_Toggle_Sw"
+switch_dpdt = "2025_PedalDivision_Switches:DPDT_Toggle_Sw"
+
+# SOT-23 lead order is fixed by the package, not by the TO-92 part named on
+# the source schematic; the report asks you to confirm the SMD substitute.
+[package_pinouts]
+npn = "BEC"
+pnp = "BEC"
+njfet = "DSG"
+nmos = "GSD"
+
+[named_parts]
+TL071 = "Amplifier_Operational:TL071"
+LM13700 = "Amplifier_Operational:LM13700"
+
+[[footprints]]
+type = "diode"
+footprint = "Diode_SMD:D_SOD-123"
+
+[[footprints]]
+type = ["npn", "pnp", "njfet", "nmos"]
+footprint = "2025_PedalDivision_Transistors:SOT-23"
+
+[[footprints]]
+type = "capacitor_polarized"
+min_farads = 68e-6
+footprint = "2025_PedalDivision_Capacitors:SMD_Cap_D6.3"
+
+[[footprints]]
+type = "capacitor"
+min_farads = 2.2e-6
+footprint = "2025_PedalDivision_Capacitors:SMD_Cap_1206"
+
+[[footprints]]
+type = ["opamp_single", "ic8"]
+footprint = "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
+
+[flags]
+GND = "2025_PedalDivision_Flags:GND"
+VCC = "2025_PedalDivision_Flags:VCC"
+VREF = "2025_PedalDivision_Flags:VREF"
+pwr_flag = "power:PWR_FLAG"
+other = "2025_PedalDivision_Flags:VCC"
+
+[ports]
+array = "2025_PedalDivision_SignalPads:3pdt_Switch_Connectors+Jacks"
+array_pins = { IN = "1", GND = "2", SW = "3", OUT = "4", JI = "5", JO = "6" }
+aliases = { INPUT = "IN", "IN+" = "IN", OUTPUT = "OUT", "OUT+" = "OUT" }
+pad = "2025_PedalDivision_SignalPads:Small_Pad_Round"
+power_pad = "2025_PedalDivision_SignalPads:Small_Pad_Square"

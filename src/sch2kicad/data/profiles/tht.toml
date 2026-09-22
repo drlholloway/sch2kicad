@@ -1,0 +1,84 @@
+# Through-hole build in the Pedal Division library — the house style mined
+# from ~/PCB (TH_Resistor_1/4w, TH_Film_Cap, 16mm_Alpha_style, TH_NPN, ...).
+#
+# [symbols] picks the symbol for each part type; its own Footprint field is
+# used unless a [[footprints]] rule matches first (first match wins).
+
+name = "tht"
+description = "Through-hole, Pedal Division library"
+
+[symbols]
+resistor = "2025_PedalDivision_Resistors:TH_Resistor_1/4w"
+ldr = "2025_PedalDivision_Resistors:LDR"
+capacitor = "2025_PedalDivision_Capacitors:TH_Film_Cap"
+capacitor_polarized = "2025_PedalDivision_Capacitors:TH_Electrolytic_Cap"
+pot = "2025_PedalDivision_Potentiometers:16mm_Alpha_style"
+trimmer = "2025_PedalDivision_Potentiometers:Trim"
+diode = "2025_PedalDivision_Diodes:Generic"
+led = "2025_PedalDivision_Diodes:LED"
+npn = "2025_PedalDivision_Transistors:TH_NPN"          # E-B-C on pads 1-2-3
+pnp = "2025_PedalDivision_Transistors:TH_PNP"          # E-B-C on pads 1-2-3
+njfet = "2025_PedalDivision_Transistors:TH_JFET"       # D-S-G on pads 1-2-3
+opamp_dual = "2025_PedalDivision_ICs:TH_Op_amp_Dual"
+lm386 = "2025_PedalDivision_ICs:TH_LM386"
+switch_spdt = "2025_PedalDivision_Switches:SPDT_Toggle_Sw"
+switch_dpdt = "2025_PedalDivision_Switches:DPDT_Toggle_Sw"
+
+# The pinout the house symbol above is wired for. A part with a different
+# lead order gets the stock KiCad symbol for its order instead, on the same
+# footprint, so the board is right by construction.
+[house_pinouts]
+npn = "EBC"
+pnp = "EBC"
+njfet = "DSG"
+
+[pinout_fallbacks]
+npn = "Transistor_BJT:Q_NPN_{pinout}"
+pnp = "Transistor_BJT:Q_PNP_{pinout}"
+njfet = "Transistor_FET:Q_NJFET_{pinout}"
+nmos = "Transistor_FET:Q_NMOS_{pinout}"
+pmos = "Transistor_FET:Q_PMOS_{pinout}"
+
+# Parts KiCad ships a named symbol for, used before the generic fallback.
+[named_parts]
+BS170 = "Transistor_FET:BS170"
+"2N7000" = "Transistor_FET:2N7000"
+TL071 = "Amplifier_Operational:TL071"
+TL061 = "Amplifier_Operational:TL061"
+LM741 = "Amplifier_Operational:LM741"
+LM13700 = "Amplifier_Operational:LM13700"
+
+[[footprints]]
+type = "diode"
+part = "^(1N400[1-7]|1N58(17|18|19)|UF400[1-7]|BAT4[1-6])"
+footprint = "2025_PedalDivision_Diodes:DO-41_P7.62mm"
+
+[[footprints]]
+type = ["npn", "pnp", "njfet", "pjfet", "nmos", "pmos"]
+footprint = "2025_PedalDivision_Transistors:TO-92 Inline"
+
+[[footprints]]
+type = "capacitor_polarized"
+min_farads = 220e-6
+footprint = "2025_PedalDivision_Capacitors:TH_Cap_XL_Radial_D8.0mm_P2.50mm"
+
+[[footprints]]
+type = ["opamp_single", "ic8"]
+footprint = "2025_PedalDivision_OpAmps:DIP-8pin_TH"
+
+[flags]
+GND = "2025_PedalDivision_Flags:GND"
+VCC = "2025_PedalDivision_Flags:VCC"
+VREF = "2025_PedalDivision_Flags:VREF"
+pwr_flag = "power:PWR_FLAG"
+# any other power net: this symbol with its Value set to the net name
+other = "2025_PedalDivision_Flags:VCC"
+
+# Off-board wiring. Ports named like a pad of the 3PDT pad array land on it;
+# anything else gets its own pad.
+[ports]
+array = "2025_PedalDivision_SignalPads:3pdt_Switch_Connectors+Jacks"
+array_pins = { IN = "1", GND = "2", SW = "3", OUT = "4", JI = "5", JO = "6" }
+aliases = { INPUT = "IN", "IN+" = "IN", OUTPUT = "OUT", "OUT+" = "OUT" }
+pad = "2025_PedalDivision_SignalPads:Small_Pad_Round"
+power_pad = "2025_PedalDivision_SignalPads:Small_Pad_Square"

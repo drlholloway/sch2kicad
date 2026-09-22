@@ -1,0 +1,19 @@
+{
+  "schema": "sch2kicad/circuit@1",
+  "name": "dpdt test",
+  "source": {"file": "synthetic", "width": 600, "height": 400},
+  "nets": {"GND": {"kind": "ground"}},
+  "parts": [
+    {"ref": "R1", "type": "resistor", "value": "10K", "pins": {"1": ["IN", 100, 100], "2": ["COM_A", 150, 100]}},
+    {"ref": "S1", "unit": "A", "type": "switch_dpdt", "label": "MODE",
+     "pins": {"com": ["COM_A", 200, 100], "a": ["A1", 240, 85], "b": ["B1", 240, 115]}},
+    {"ref": "R2", "type": "resistor", "value": "1K", "pins": {"1": ["A1", 300, 60], "2": ["GND", 300, 100]}},
+    {"ref": "R3", "type": "resistor", "value": "2K", "pins": {"1": ["B1", 330, 130], "2": ["GND", 330, 170]}},
+    {"ref": "S1", "unit": "B", "type": "switch_dpdt",
+     "pins": {"com": ["COM_B", 200, 250], "a": ["A2", 240, 235], "b": ["NC", 240, 265]}},
+    {"ref": "R4", "type": "resistor", "value": "3K", "pins": {"1": ["COM_B", 120, 250], "2": ["GND", 120, 300]}},
+    {"ref": "R5", "type": "resistor", "value": "4K", "pins": {"1": ["A2", 300, 235], "2": ["GND", 300, 280]}}
+  ],
+  "ports": [{"name": "IN", "net": "IN", "at": [50, 100]}],
+  "blocks": [{"name": "Switch", "parts": ["S1", "R2", "R3", "R4", "R5"]}]
+}

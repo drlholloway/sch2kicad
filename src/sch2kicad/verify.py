@@ -84,7 +84,8 @@ def export_netlist(sch: Path, out: Path) -> Path:
     return out
 
 
-def parse_netlist(path: Path) -> tuple[dict[str, dict], dict[str, set[str]]]:
+def parse_netlist(path: Path) -> tuple[dict[str, dict], dict[str, set[str]], dict[str, str]]:
+    """Components, nets (name → {"REF.PIN"}) and each node's electrical pin type."""
     root = sexpr.parse(path.read_text())
     comps: dict[str, dict] = {}
     for comp in sexpr.children(sexpr.child(root, "components") or ["components"], "comp"):
@@ -94,12 +95,50 @@ def parse_netlist(path: Path) -> tuple[dict[str, dict], dict[str, set[str]]]:
             "footprint": str(sexpr.value(sexpr.child(comp, "footprint"), 1, "")),
         }
     nets: dict[str, set[str]] = {}
+    pintypes: dict[str, str] = {}
     for net in sexpr.children(sexpr.child(root, "nets") or ["nets"], "net"):
         name = str(sexpr.value(sexpr.child(net, "name"), 1, ""))
-        nodes = {f"{sexpr.value(sexpr.child(n, 'ref'))}.{sexpr.value(sexpr.child(n, 'pin'))}"
-                 for n in sexpr.children(net, "node")}
+        nodes = set()
+        for n in sexpr.children(net, "node"):
+            node = f"{sexpr.value(sexpr.child(n, 'ref'))}.{sexpr.value(sexpr.child(n, 'pin'))}"
+            nodes.add(node)
+            pintypes[node] = str(sexpr.value(sexpr.child(n, "pintype"), 1, ""))
         nets[name] = nodes
-    return comps, nets
+    return comps, nets, pintypes
+
+
+def _power_symbol_nets(sch: Path) -> dict[str, str]:
+    """#PWR reference → the net it names (a power symbol's Value is its net name)."""
+    out = {}
+    for sym in sexpr.children(sexpr.parse(sch.read_text()), "symbol"):
+        props = {str(p[1]): str(p[2]) for p in sexpr.children(sym, "property") if len(p) > 2}
+        if props.get("Reference", "").startswith("#PWR"):
+            out[props["Reference"]] = props.get("Value", "")
+    return out
+
+
+def fold_output_driven(errors: list[str], sch: Path, nets: dict[str, set[str]],
+                       pintypes: dict[str, str]) -> tuple[list[str], list[str]]:
+    """A power net an output pin drives (an op-amp buffering VREF) has no power output for
+    KiCad's ERC, and a PWR_FLAG would clash with the output pin. Where KiCad's own
+    netlist shows the output driving the net, the complaint becomes a note."""
+    import re
+    drivers = {name: sorted(n for n in nodes if pintypes.get(n) == "output") for name, nodes in nets.items()}
+    pwr = _power_symbol_nets(sch)
+    keep: list[str] = []
+    folded: dict[str, list[str]] = {}
+    for e in errors:
+        m = re.match(r"\[power_pin_not_driven\].* Symbol (\S+) Pin (\S+) ", e)
+        if m:
+            ref, pin = m.groups()
+            net = pwr.get(ref) or next((name for name, nodes in nets.items() if f"{ref}.{pin}" in nodes), None)
+            if net and drivers.get(net):
+                folded[net] = drivers[net]
+                continue
+        keep.append(e)
+    notes = [f"{net} is driven by an output pin ({', '.join(outs)}), which KiCad's ERC doesn't count "
+             f"as a power source; a PWR_FLAG would clash with it, so there is none" for net, outs in folded.items()]
+    return keep, notes
 
 
 def compare_nets(expected: dict[str, list[str]], actual: dict[str, set[str]]) -> list[str]:
@@ -248,7 +287,7 @@ def verify(sch: Path, build_json: Path | None = None, source_image: Path | None 
     meta = json.loads(build_json.read_text()) if build_json.exists() else {}
     rep = Report(sch=sch)
     net_path = export_netlist(sch, work / "kicad.net")
-    comps, nets = parse_netlist(net_path)
+    comps, nets, pintypes = parse_netlist(net_path)
     rep.components = len(comps)
     rep.nets = len(nets)
     expected = meta.get("expected")
@@ -258,6 +297,8 @@ def verify(sch: Path, build_json: Path | None = None, source_image: Path | None 
     else:
         rep.netlist_diffs = ["no build.json next to the schematic: nothing to compare against"]
     rep.erc_errors, rep.erc_warnings = run_erc(sch, work / "erc.json")
+    rep.erc_errors, driven_notes = fold_output_driven(rep.erc_errors, sch, nets, pintypes)
+    rep.notes += driven_notes
     # a library symbol with pins off the 50 mil grid makes KiCad flag every pin and the
     # short stub joining it to the grid; say that once instead of once per endpoint
     off = [w for w in rep.erc_warnings if w.startswith("[endpoint_off_grid]")]

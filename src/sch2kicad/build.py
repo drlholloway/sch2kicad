@@ -120,6 +120,9 @@ class Builder:
         self.term_owner_items: dict[str, list[str]] = {}
         self.net_items: dict[str, list[str]] = {}
         self.labelled: list[str] = []
+        self.text_boxes: list[tuple] = []           # visible field text of placed symbols
+        self.flag_stubs: dict[str, list] = {}     # routed net → PWR_FLAG stub segments
+        self.flag_pins: dict[str, list] = {}      # routed net → PWR_FLAG pin points
 
     # ............................................................ helpers
     def pin_net(self, pl: Placed, number: str) -> str | None:
@@ -220,6 +223,9 @@ class Builder:
                 inst.hidden_fields |= {"Reference", "Value"}
             dirs = [pl.pin_dir(p.number) for p in pl.pins()]
             inst.field_pos = field_positions(inst, pl.box(), dirs, names) if names else {}
+            for k, at in inst.field_pos.items():   # flags keep off this text
+                self.text_boxes.append(_text_box(at, inst.value if k == "Value" else
+                                                 inst.ref if k == "Reference" else inst.fields.get(k, "")))
             for k in list(inst.fields) + ["Value"]:
                 if k not in names:
                     inst.hidden_fields.add(k)
@@ -274,11 +280,18 @@ class Builder:
                 for t in terms[net]:
                     u = self.w.label(net, t.pos, t.out)
                     self.term_owner_items.setdefault(t.owner, []).append(u)
+                for a, b in self.flag_stubs.get(net, []):
+                    self.net_items.setdefault(net, []).append(self.w.wire(a, b))
                 continue
             stubs = [t.stub for t in terms[net] if t.stub]
-            segs, juncs = normalise(r.segments + stubs, [t.pos for t in terms[net]])
+            segs, juncs = normalise(r.segments + stubs + self.flag_stubs.get(net, []),
+                                    [t.pos for t in terms[net]] + self.flag_pins.get(net, []))
             uu = [self.w.wire(a, b) for a, b in segs] + [self.w.junction(j) for j in juncs]
             self.net_items.setdefault(net, []).extend(uu)
+        for net, stub_segs in self.flag_stubs.items():
+            if net not in routed:   # a one-pin net never reached the router
+                for a, b in stub_segs:
+                    self.net_items.setdefault(net, []).append(self.w.wire(a, b))
         for name, anchor, text_dir in pending_labels:
             self.w.global_label(name, anchor, text_dir)
         # dangling single-terminal nets that are not ports: mark them for the report
@@ -375,8 +388,9 @@ class Builder:
             tip = path[-1]
             dx, dy = apply(o.m, pin.x, pin.y)
             origin = (round(tip[0] - dx, 4), round(tip[1] - dy, 4))
-            box = _flag_box(sym, origin, o)
-            if not self._box_free(box, router, net, None, 0) or not self._path_free(path, router, net):
+            box = _flag_box(sym, origin, o, value)
+            if (not self._box_free(box, router, net, None, 0) or not self._path_free(path, router, net)
+                    or any(_overlap(box, tb) for tb in self.text_boxes)):
                 return None
             return (path, o, origin, box)
 
@@ -409,9 +423,17 @@ class Builder:
         inst.field_pos = _lib_field_positions(sym, inst.at, o)
         self.w.add_symbol(inst)
         items = [inst.uuid]
+        # on a net that is routed as wire, a route may join this stub anywhere along it,
+        # so the stub is drawn with the net's wires, where joins get split end to end
+        routed = not self._draw_as_flags(net)
         for a, b in zip(path, path[1:]):
-            items.append(self.w.wire(a, b))
+            if routed:
+                self.flag_stubs.setdefault(net, []).append((a, b))
+            else:
+                items.append(self.w.wire(a, b))
             router.add_segment(net, cell_of(a), cell_of(b))
+        if routed:
+            self.flag_pins.setdefault(net, []).append(path[-1])
         self.term_owner_items.setdefault(t.owner, []).extend(items)
         router.block_box(box, inflate=0.3)
         router.pin_net[cell_of(path[-1])] = net
@@ -448,10 +470,10 @@ class Builder:
         """ERC wants every power input driven: one PWR_FLAG per net that has power-input pins."""
         need = []
         for net in terms:
-            has_power_in = self._draw_as_flags(net) or any(
-                p.etype == "power_in" for pl in self.layout.placed for p in pl.pins()
-                if self.pin_net(pl, p.number) == net)
-            if has_power_in:
+            types = {p.etype for pl in self.layout.placed for p in pl.pins() if self.pin_net(pl, p.number) == net}
+            # a net an output already drives (an op-amp buffering VREF) gets no PWR_FLAG:
+            # that would be an output-to-power-output conflict; verify explains the ERC note
+            if (self._draw_as_flags(net) or "power_in" in types) and not types & {"output", "power_out"}:
                 need.append(net)
         if not need:
             return
@@ -559,13 +581,30 @@ def _hpwl(ts: list[Terminal]) -> float:
     return (max(xs) - min(xs)) + (max(ys) - min(ys))
 
 
-def _flag_box(sym: LibSymbol, origin, o: Orient):
+def _flag_box(sym: LibSymbol, origin, o: Orient, value: str = ""):
     x0, y0, x1, y1 = sym.body_bbox(1)
     pts = [apply(o.m, x, y) for x, y in ((x0, y0), (x0, y1), (x1, y0), (x1, y1))]
-    # include the value text below/above the symbol
     xs = [origin[0] + p[0] for p in pts]
     ys = [origin[1] + p[1] for p in pts]
-    return (min(xs), min(ys), max(xs), max(ys))
+    box = (min(xs), min(ys), max(xs), max(ys))
+    at = _lib_field_positions(sym, origin, o).get("Value")
+    if at and value:    # the value text ("GND") drawn beside the symbol
+        box = _union(box, _text_box(at, value))
+    return box
+
+
+def _text_box(at: tuple[float, float], text: str) -> tuple[float, float, float, float]:
+    """Rough extent of centred 1.27 mm field text."""
+    w = max(len(text), 1) * 0.95
+    return (at[0] - w / 2, at[1] - 0.85, at[0] + w / 2, at[1] + 0.85)
+
+
+def _union(a, b):
+    return (min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]))
+
+
+def _overlap(a, b) -> bool:
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
 
 
 def _lib_field_positions(sym: LibSymbol, at, o: Orient) -> dict[str, tuple[float, float]]:

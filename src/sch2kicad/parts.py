@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import re
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from importlib import resources
 from pathlib import Path
 
@@ -285,7 +285,13 @@ class PartResolver:
                 unit = 1
 
         # ---- pins
-        pinmap, swappable, p3 = self._pinmap(part, sym, unit, pinout)
+        # an op-amp entry with a supply and no signal pins is a power unit the source
+        # draws on its own (PedalPCB's "IC1" with pins 8/4)
+        power_only = ptype in OPAMPS and bool(part.supply) and not part.pins
+        if power_only:
+            pinmap, swappable, p3 = {}, [], []
+        else:
+            pinmap, swappable, p3 = self._pinmap(part, sym, unit, pinout)
         problems += p3
 
         # ---- footprint
@@ -304,9 +310,19 @@ class PartResolver:
         fields = dict(part.fields)
         if part.label:
             fields["Label"] = part.label
-        return Resolved(part=part, lib_id=lib_id, symbol=sym, unit=unit, footprint=footprint,
-                        value=value, fields=fields, pinmap=pinmap, swappable=swappable,
-                        pinout=pinout, notes=notes, problems=problems)
+        res = Resolved(part=part, lib_id=lib_id, symbol=sym, unit=unit, footprint=footprint,
+                       value=value, fields=fields, pinmap=pinmap, swappable=swappable,
+                       pinout=pinout, notes=notes, problems=problems)
+        if power_only:
+            if sym.unit_count == 1:
+                problems.append(f"{part.ref}: {lib_id} carries its power pins on the amplifier; "
+                                f"put \"supply\" on the amplifier's entry")
+                return res
+            sup = self.supply_unit(res)
+            if sup is not None:
+                sup.problems = problems + sup.problems
+                return sup
+        return res
 
     # .............................................................. transistors
     def _transistor_symbol(self, part: Part) -> tuple[str, str, list[str], list[str]]:
@@ -445,7 +461,10 @@ class PartResolver:
 
     # ............................................................ supply units
     def supply_unit(self, parent: Resolved) -> Resolved | None:
-        """The power unit (V+/V-) for an IC whose circuit.json entry lists ``supply``."""
+        """The power unit (V+/V-) for an IC whose circuit.json entry lists ``supply``.
+
+        A single-unit symbol (TL071) has its power pins on the amplifier itself; they
+        are added to ``parent`` and there is no separate unit."""
         part = parent.part
         if not part.supply:
             return None
@@ -465,9 +484,21 @@ class PartResolver:
             else:
                 pmap[key] = num
         from .circuit import PinRef
+        if unit == parent.unit and part.pins:
+            # power pins on the amplifier's own unit (a TL071). Drawn apart from it
+            # (PedalPCB's IC3.2), they must not steer how the amplifier is turned, so
+            # they join it without a position
+            pins = dict(part.pins)
+            for k, n in part.supply.items():
+                pins[_SYNONYMS["opamp"].get(k.lower(), k)] = PinRef(k, n, None)
+            parent.part = replace(part, pins=pins)
+            parent.pinmap.update(pmap)
+            parent.problems += problems
+            return None
         sup = Part(ref=part.ref, type="supply", value=parent.value, part=part.part,
                    unit=chr(ord("A") + unit - 1),
-                   pins={(_SYNONYMS["opamp"].get(k.lower(), k)): PinRef(k, n, None) for k, n in part.supply.items()})
+                   pins={(_SYNONYMS["opamp"].get(k.lower(), k)): PinRef(k, n, part.supply_at.get(k))
+                         for k, n in part.supply.items()})
         return Resolved(part=sup, lib_id=parent.lib_id, symbol=sym, unit=unit, footprint=parent.footprint,
                         value=parent.value, fields=dict(parent.fields), pinmap=pmap, problems=problems,
                         is_supply_unit=True)
@@ -480,7 +511,7 @@ def resolve_all(circuit: Circuit, profile: Profile, symbols: SymbolResolver) -> 
     for p in circuit.parts:
         res = r.resolve(p)
         out.append(res)
-        if p.supply and p.ref not in supplies:
+        if p.supply and p.ref not in supplies and not res.is_supply_unit:
             s = r.supply_unit(res)
             if s:
                 supplies[p.ref] = s

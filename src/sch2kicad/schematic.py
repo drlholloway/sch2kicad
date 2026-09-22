@@ -224,7 +224,10 @@ def field_positions(inst: SymbolInstance, box: tuple[float, float, float, float]
         return stack(x0 - 0.8 - wmax / 2, cy - (n - 1) * line / 2)
     if (0, -1) not in used:          # above
         return stack(cx, y0 - 1.0 - (n - 1) * line)
-    return stack(cx, y1 + 1.6)       # below
+    if (0, 1) not in used:           # below
+        return stack(cx, y1 + 1.6)
+    # pins on every side (an op-amp drawn with its power pins): upper right, above the output
+    return stack(x1 + 0.8 + wmax / 2, cy - 2.2 - (n - 1) * line)
 
 
 def _visible_text(inst: SymbolInstance, name: str) -> str:

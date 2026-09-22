@@ -85,3 +85,19 @@ def test_explicit_pinout_overrides_assumption(tmp_path):
     # a CBE part must not land on the house E-B-C symbol
     sch = res.sch.read_text()
     assert "Transistor_BJT:Q_NPN_CBE" in sch
+
+
+def test_drawn_power_units_are_placed_where_drawn():
+    """PedalPCB draws each 4558's power unit beside its own filter: it must land there, and a
+    single-unit TL071 must carry its power pins on the amplifier itself."""
+    from sch2kicad.circuit import load
+    from sch2kicad.geometry import Layout
+    from sch2kicad.parts import load_profile, resolve_all
+    c = load(HERE.parent / "samples" / "circuits" / "redmuffin-pedalpcb.circuit.json")
+    res = resolve_all(c, load_profile("tht"), SymbolResolver())
+    power = [r for r in res if r.is_supply_unit]
+    assert sorted(r.part.key for r in power) == ["IC1C", "IC2C"]
+    assert all(pin.at for r in power for pin in r.part.pins.values())
+    assert Layout(res).unplaced == []
+    ic3 = next(r for r in res if r.ref == "IC3")
+    assert ic3.pinmap["V+"] == "7" and ic3.pinmap["V-"] == "4"

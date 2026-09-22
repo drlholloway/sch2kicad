@@ -82,8 +82,12 @@ watermark logos behind the drawing — ignore them. Pots show lugs 1/2/3 (use th
 for cw/ccw; which end is up varies pot to pot) and are named by their knob:
 `PRE`, `TONE` is the ref. Transistors show 1/2/3 = E/B/C; electrolytics show `+`;
 resistors and film caps carry no pin numbers. Op-amps are drawn as units `IC1.1`,
-`IC1.2` with a separate power unit (`IC1` with pins 8/4) — make the power unit the
-`supply`. Rails are flags: `VCC`, `VREF`, ground. Pads are small circles:
+`IC1.2` with a separate power unit (`IC1` with pins 8/4). Give that its own entry
+(unit `C`, positioned `supply`) so it lands beside its filter. A single TL071 is
+drawn as `IC3.1` plus `IC3.2`, but it is one entry. Red Muffin gives each 4558 its
+own 100R/100u/100n rail (`IC1_V+`, a power net drawn as wire), and buffers VREF
+with the TL071; verify notes that VREF is driven by an output rather than a power
+source. Rails are flags: `VCC`, `VREF`, ground. Pads are small circles:
 `IN`/`OUT` each with a ground pad beside it (the jack sleeve), `SW` and `GND`
 for the footswitch, `+`/`-` for the DC jack. The wiring page shows IN/GND/SW/OUT
 going to the 3PDT, the same as the house pad array, so make the ports `IN`, `OUT`,

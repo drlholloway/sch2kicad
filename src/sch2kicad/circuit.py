@@ -39,6 +39,8 @@ class Part:
     lib_id: str = ""             # explicit override
     pins: dict[str, PinRef] = field(default_factory=dict)
     supply: dict[str, str] = field(default_factory=dict)   # IC power pins → nets
+    # where the source draws those power pins, when it draws the power unit itself
+    supply_at: dict[str, tuple[float, float]] = field(default_factory=dict)
     fields: dict[str, str] = field(default_factory=dict)   # extra KiCad fields
     dnp: bool = False
 
@@ -178,12 +180,15 @@ def from_dict(data: dict) -> Circuit:
         if "ref" not in p or "type" not in p:
             raise ValueError(f"{where}: every part needs ref and type")
         pins = {str(k): _pin(str(k), v, f"{where}.pins.{k}") for k, v in (p.get("pins") or {}).items()}
+        # supply pins take a net name, or [net, x, y] like pins when the power unit is drawn
+        supply = {str(k): _pin(str(k), v, f"{where}.supply.{k}") for k, v in (p.get("supply") or {}).items()}
         parts.append(Part(
             ref=str(p["ref"]), type=str(p["type"]), value=str(p.get("value", "")),
             part=str(p.get("part", "")), unit=str(p.get("unit", "")), label=str(p.get("label", "")),
             pinout=str(p.get("pinout", "")).upper(), footprint=str(p.get("footprint", "")),
             lib_id=str(p.get("lib_id", "")), pins=pins,
-            supply={str(k): str(v) for k, v in (p.get("supply") or {}).items()},
+            supply={k: str(v.net) for k, v in supply.items()},
+            supply_at={k: v.at for k, v in supply.items() if v.at is not None},
             fields={str(k): str(v) for k, v in (p.get("fields") or {}).items()},
             dnp=bool(p.get("dnp", False)),
         ))

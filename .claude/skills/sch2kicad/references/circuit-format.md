@@ -74,6 +74,14 @@ deliberately unconnected and gets a no-connect flag.
   through-hole 2N2222/2N2907). Unknown parts without it are never READY.
 - `supply` — IC power pins → nets, e.g. `{"V+": "VCC", "V-": "GND"}`. Put it on one
   unit; the power unit is drawn beside the amplifier with flags.
+  - When the source draws the power unit on its own (PedalPCB's `IC1` with pins
+    8/4, often on its own filtered rail), give it its own entry with the unit after
+    the amplifiers, no `pins`, and positioned supply pins:
+    `{"ref": "IC1", "unit": "C", "type": "opamp_dual", "part": "RC4558",
+    "supply": {"V+": ["IC1_V+", 747, 1235], "V-": ["GND", 747, 1293]}}`. It is placed
+    where it is drawn, and a block can list it as `IC1C`.
+  - A single-unit op-amp (TL071) has its power pins on the amplifier: put `supply`
+    (nets only) on the amplifier's entry, even when the source draws `IC3.2` apart.
 - `footprint`, `lib_id` — overrides, rarely needed.
 - `dnp` — true for parts marked do-not-populate / optional.
 

@@ -14,6 +14,17 @@
 4. Count: every part in the drawing is in `parts`; every ref in the parts list /
    BOM appears once; every pin has a net or `"NC"`.
 5. Build, then compare `compare.png` part by part.
+6. Read the `drawing:` line of the report, and open the drawing again at every
+   pin it names. It traces the source's own wires and compares the nets with
+   yours, so it catches what the eye slides over: a crossing taken for a
+   junction, a pin on its neighbour's net, VA where the flag says VB. It also
+   says how many pins it could trace — the rest is on you.
+
+**Pin positions are part of the reading, not decoration.** Put each one where
+the wire actually meets the part, to within a few pixels: the layout follows
+them, and so does the cross-check, which cannot tell a wrongly placed pin from
+a wrongly wired one. Where a symbol's own pin line is drawn, the wire meets it
+at the far end of that line, not at the body.
 
 ## Connections
 

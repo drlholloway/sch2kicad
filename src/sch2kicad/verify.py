@@ -36,6 +36,7 @@ class Report:
     bom_warnings: list[str] = field(default_factory=list)
     components: int = 0
     nets: int = 0
+    drawing: object | None = None      # trace.Crosscheck, when the source can be read again
     render: Path | None = None
     compare: Path | None = None
 
@@ -57,6 +58,11 @@ class Report:
         if self.bom_rows:
             state = "OK" if not self.bom_problems else f"{len(self.bom_problems)} differ"
             lines.append(f"  parts list: {self.bom_matched} of {self.bom_rows} agree with the drawing  {state}")
+        d = self.drawing
+        if d is not None:
+            state = "the reading agrees  OK" if not d.disagreements else f"{d.disagreements} disagree"
+            lines.append(f"  drawing:    {d.checked} of {len(d.pins)} pins traced through "
+                         f"{d.traced} conductors, {state}")
         lines += sect("netlist differences", self.netlist_diffs, "problem:")
         lines += sect("ERC errors", self.erc_errors, "problem:")
         lines += sect("footprints", self.footprint_problems, "problem:")
@@ -66,6 +72,18 @@ class Report:
         lines += sect("parts list (re-read the drawing; accept a real difference in bom_accept)",
                       self.bom_problems, "problem:")
         lines += sect("parts list", self.bom_warnings, "warning:")
+        if d is not None:
+            lines += sect("the drawing wires it differently (re-read it; the netlist is what a board is)",
+                          d.splits + d.merges + d.misnamed, "warning:")
+            lines += sect("pin positions a few pixels out", d.misplaced, "note:")
+            if d.unclaimed:
+                at = ", ".join(f"({x},{y})" for x, y in d.unclaimed[:8])
+                lines += sect("wire in the drawing that nothing in the reading reaches", [at], "warning:")
+            if d.unmatched:
+                names = [u.split(" at ")[0] for u in d.unmatched]
+                shown = ", ".join(names[:10]) + (" ..." if len(names) > 10 else "")
+                lines += sect("no wire found under these pins, so nothing there was checked",
+                              [shown], "note:")
         lines += sect("ERC warnings", self.erc_warnings, "warning:")
         lines += sect("notes", self.notes, "note:")
         if self.compare:
@@ -343,6 +361,13 @@ def verify(sch: Path, build_json: Path | None = None, source_image: Path | None 
         rep.bom_rows, rep.bom_matched = chk.rows, chk.matched
         rep.bom_problems, rep.bom_warnings = chk.problems, chk.warnings
         rep.notes += chk.notes
+    if meta.get("circuit"):
+        try:
+            from .circuit import load as _load
+            from .trace import crosscheck_circuit
+            rep.drawing = crosscheck_circuit(_load(Path(meta["circuit"])))
+        except Exception as e:      # reading the source again is a check, never the gate
+            rep.notes.append(f"could not read the drawing again to check it: {e}")
     if meta.get("labelled_nets"):
         rep.notes.append("joined with net labels instead of wires: " + ", ".join(meta["labelled_nets"]))
     if meta.get("moved"):

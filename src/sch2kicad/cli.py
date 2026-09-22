@@ -79,6 +79,16 @@ def _cmd_compare(a) -> int:
     return 0
 
 
+def _cmd_crosscheck(a) -> int:
+    """Read the source drawing again and check circuit.json against it."""
+    from .circuit import load
+    from .trace import crosscheck_circuit
+    c = load(Path(a.circuit))
+    rep = crosscheck_circuit(c, doc=Path(a.doc) if a.doc else None)
+    print(rep.text())
+    return 0 if not rep.disagreements else 1
+
+
 def _cmd_ingest(a) -> int:
     from .ingest import ingest
     return ingest(Path(a.input), Path(a.out) if a.out else None, page=a.page, list_only=a.list)
@@ -146,6 +156,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("schematic")
     p.add_argument("--no-render", action="store_true")
     p.set_defaults(fn=_cmd_verify)
+
+    p = sub.add_parser("crosscheck", help="read the drawing again and check circuit.json against it")
+    p.add_argument("circuit")
+    p.add_argument("--doc", help="the PDF, if the work directory has moved")
+    p.set_defaults(fn=_cmd_crosscheck)
 
     p = sub.add_parser("compare", help="original and KiCad render side by side")
     p.add_argument("schematic")

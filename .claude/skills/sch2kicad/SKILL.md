@@ -103,10 +103,30 @@ fix the reading or record the answer in `"bom_accept"`
 (SUSTAIN on the drawing, GAIN in the list) and parts the list leaves out (a
 status LED) are warnings: pass them on.
 
+Verify also **reads the drawing again** and checks the reading against it —
+the PDF's own vectors where the page has them, the pixels otherwise. It joins
+wires the way a schematic joins them and compares the nets that fall out with
+`circuit.json`, so a crossing read as a junction, a pin on the wrong net or two
+rails mixed up show up as a `warning:` naming the pins:
+
+```
+  drawing:    132 of 168 pins traced through 468 conductors, the reading agrees  OK
+```
+
+Every line it prints is worth opening the drawing for. A **split** ("X is 2
+separate things in the drawing") means the reading joins what the drawing keeps
+apart — a short on the board; **joined** is the reverse — a connection the board
+would not have. Either one is fatal, and either can also be the checker being
+fooled, so go and look. A `note:` about pin positions a few pixels out, or pins
+with no wire under them, is not a fault — but the second says which part of the
+reading nothing checked, so read those by eye. `sch2kicad crosscheck circuit.json` runs it alone. It needs the work
+directory (`ingest.json`, `source.png`) beside `circuit.json`, so read and build
+from the work copy.
+
 **4. Look at it.** Read `sch2kicad/compare.png` (source on top, KiCad below,
 source cropped to the circuit) and go part by part: every value, every
-polarity mark, every junction. This is the only check on the *reading*.
-Verify cannot know that you read 4.7K as 47K or joined a crossing. Fix
+polarity mark, every junction. Values, polarity and part numbers are yours
+alone to check: nothing in verify knows that you read 4.7K as 47K. Fix
 `circuit.json` and rebuild until the two match. To show the user, make a
 high-resolution side-by-side and open it on their screen (images you read are
 not shown to them in the terminal):

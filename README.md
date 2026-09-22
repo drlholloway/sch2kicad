@@ -92,8 +92,14 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   Ripped Speaker, Bloody Germanium OD and Germanium Filter are regression cases
   in `samples/circuits/` (the tests need no images). The source PNGs/PDFs are
   third-party and stay out of git; drop them in `samples/` to run `compare`.
-- **M2:** image-processing cross-check of the reading (wire tracing against
-  `circuit.json`), rail alignment.
+- **M2 (done):** the reading checked against the drawing. `sch2kicad
+  crosscheck circuit.json` — and every `verify` — reads the source a second
+  time, by its vectors where the page has them and by its pixels otherwise,
+  builds a netlist from conductors alone and compares it with the reading. It
+  says which nets the drawing splits or joins differently, which rail a flag
+  really names, and which pins it could not trace, so the coverage is plain.
+  All eight samples agree with their drawings; planted faults — a pin moved to
+  another net, a crossing read as a junction, two rails mixed up — are caught.
 - **M3 (under way):** build docs end to end, with a cross-check against the doc's
   parts list. Done: PedalPCB Thunder Pipe (63 of 63 parts agree) and Red Muffin
   (60 of 60; 4558 power units on their own filtered rails, TL071 VREF buffer),

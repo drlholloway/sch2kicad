@@ -23,6 +23,8 @@ def test_same_value():
     assert bom.same_value("npn", "2N5089", "2N5089")
     assert bom.same_value("npn", "2N5089", "MPS2222") is False
     assert bom.same_value("resistor", "10K", "10K-22K") is None       # a range: can't tell
+    assert bom.same_value("led", "3mm red LED", "3mm LED")            # words of one in the other
+    assert bom.same_value("led", "3mm red LED", "5mm") is None
 
 
 PARTS = {
@@ -81,3 +83,5 @@ def test_extract_aion_parts_list():
     assert len(rows) == 75 and bom.pages(rows) == "3, 4, 5"       # page footers are not rows
     assert {r.ref for r in rows if r.hardware} == {"IC1-S", "IC2-S", "IC3-S", "IC4-S", "IN", "OUT", "DC", "FSW", "ENC"}
     assert next(r for r in rows if r.ref == "IC4").type == "Transconductance amplifier, dual, DIP16"
+    reading = json.loads((SAMPLES / "circuits" / "trivibe-aionfx.circuit.json").read_text())
+    assert reading["bom"] == bom.rows_json(rows)

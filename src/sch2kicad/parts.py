@@ -180,6 +180,10 @@ class Resolved:
         return self.part.ref
 
 
+def _pin_order(number: str) -> tuple:
+    return (0, int(number), "") if number.isdigit() else (1, 0, number)
+
+
 def _pins_by_name(sym: LibSymbol, unit: int) -> dict[str, str]:
     out = {}
     for p in sym.pins_for(unit):
@@ -202,12 +206,15 @@ def _symbol_pinout(sym: LibSymbol) -> str | None:
     return letters if len(letters) == 3 and set(letters) in ({"B", "C", "E"}, {"G", "D", "S"}) else None
 
 
-def _footprint_rule(profile: Profile, ptype: str, part: Part) -> str | None:
+def _footprint_rule(profile: Profile, ptype: str, part: Part, sym: LibSymbol | None = None) -> str | None:
     for rule in profile.data.get("footprints", []):
         types = rule.get("type")
         if isinstance(types, str):
             types = [types]
         if types and ptype not in types:
+            continue
+        # an IC's package by its pin count (stock LM13700 and 4xxx symbols carry no footprint)
+        if "pins" in rule and (sym is None or len({p.number for p in sym.pins}) != int(rule["pins"])):
             continue
         if "part" in rule and not re.search(rule["part"], part.part or part.value, re.I):
             continue
@@ -254,7 +261,9 @@ class PartResolver:
             elif ptype == "lm386":
                 lib_id = self._symbol_for_type("lm386")
             else:
-                lib_id = named.get(key, "")
+                # suffix grades name the same die: LM13700N, TL071CP
+                lib_id = named.get(key) or next(
+                    (v for k, v in sorted(named.items(), key=lambda kv: -len(kv[0])) if key.startswith(k)), "")
                 if not lib_id:
                     problems.append(f"{part.ref}: no symbol known for {part.part or part.value!r}; "
                                     f"set lib_id in circuit.json")
@@ -280,9 +289,23 @@ class PartResolver:
                 unit = int(u)
             elif len(u) == 1 and u.isalpha():
                 unit = ord(u) - ord("A") + 1
-            if unit > sym.unit_count:
+            if unit > sym.unit_count and not (ptype == "ic" and part.pins and sym.unit_count > 1):
                 problems.append(f"{part.key}: {lib_id} has only {sym.unit_count} unit(s)")
                 unit = 1
+        if ptype == "ic" and sym.unit_count > 1 and part.pins:
+            # an IC's pins are numbered on the drawing, so they say which unit it is;
+            # the source's own unit names (IC4A, IC4_BUF1) needn't follow KiCad's order
+            nums = set(part.pins)
+            fits = [u for u in range(1, sym.unit_count + 1) if nums <= {p.number for p in sym.pins_for(u)}]
+            if fits and unit not in fits:
+                unit = fits[0]
+                notes.append(f"{part.key}: pins {', '.join(sorted(nums, key=_pin_order))} are unit "
+                             f"{chr(ord('A') + unit - 1)} of {lib_id}")
+            elif not fits:
+                problems.append(f"{part.key}: no unit of {lib_id} has all of pins "
+                                f"{', '.join(sorted(nums, key=_pin_order))}")
+        if unit > sym.unit_count:
+            unit = 1
 
         # ---- pins
         # an op-amp entry with a supply and no signal pins is a power unit the source
@@ -295,7 +318,7 @@ class PartResolver:
         problems += p3
 
         # ---- footprint
-        footprint = part.footprint or _footprint_rule(self.profile, ptype, part) or sym.props.get("Footprint", "")
+        footprint = part.footprint or _footprint_rule(self.profile, ptype, part, sym) or sym.props.get("Footprint", "")
         if not footprint:
             problems.append(f"{part.ref}: no footprint (symbol {lib_id} has none and no profile rule matched)")
 

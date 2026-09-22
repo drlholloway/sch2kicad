@@ -124,8 +124,9 @@ sch2kicad blocks circuit.json -o ~/PCB/Name/blocks -p tht
 
 Blocks stay as standalone schematics for now — do not write into the user's
 design-block libraries (`CryptidEffectsDesignBlocks` etc.) unless asked.
-Block files always show one `isolated_pin_label` warning per boundary label;
-that is expected.
+`sch2kicad blocks` doesn't verify; run `sch2kicad verify` on each block file. A
+block is cut from a larger circuit, so its boundary nets are driven from
+outside; verify says so in a note rather than failing on it.
 
 **6. Report.** READY or not, what was asked or flagged, where the files are.
 Remind them: in KiCad, *Update PCB from Schematic* with **Group footprints

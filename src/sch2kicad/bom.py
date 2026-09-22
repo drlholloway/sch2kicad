@@ -141,6 +141,9 @@ def same_value(ptype: str, drawn: str, listed: str) -> bool | None:
     if ptype in PART_TYPES:
         a, b = _norm(drawn), _norm(listed)
         return bool(a and b and (a in b or b in a))    # 4558 / RC4558, TL062P / TL062
+    if ptype == "led":                                 # "3mm red LED" / "3mm LED"
+        a, b = set(re.findall(r"[A-Z0-9]+", drawn.upper())), set(re.findall(r"[A-Z0-9]+", listed.upper()))
+        return True if a and b and (a <= b or b <= a) else None
     return None
 
 

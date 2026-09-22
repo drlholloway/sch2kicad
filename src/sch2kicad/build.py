@@ -275,10 +275,19 @@ class Builder:
                 r = NetRoute(net, labelled=True)
                 self.labelled.append(net)
             routed[net] = r
+        boundary = {port.net for port in self.label_ports}
         for net, r in routed.items():
             if r.labelled:
                 for t in terms[net]:
-                    u = self.w.label(net, t.pos, t.out)
+                    if net in boundary:
+                        # a block's boundary net: its global label is already the label, and
+                        # the pins take global labels too (a local label of the same name
+                        # would be a different net in KiCad's eyes)
+                        if t.owner.startswith("label:"):
+                            continue
+                        u = self.w.global_label(net, t.pos, t.out)
+                    else:
+                        u = self.w.label(net, t.pos, t.out)
                     self.term_owner_items.setdefault(t.owner, []).append(u)
                 for a, b in self.flag_stubs.get(net, []):
                     self.net_items.setdefault(net, []).append(self.w.wire(a, b))
@@ -293,7 +302,8 @@ class Builder:
                 for a, b in stub_segs:
                     self.net_items.setdefault(net, []).append(self.w.wire(a, b))
         for name, anchor, text_dir in pending_labels:
-            self.w.global_label(name, anchor, text_dir)
+            if not (name in routed and routed[name].labelled):   # its pins carry the label
+                self.w.global_label(name, anchor, text_dir)
         # dangling single-terminal nets that are not ports: mark them for the report
         for net, ts in terms.items():
             if len(ts) == 1 and net not in flagged:
@@ -342,12 +352,17 @@ class Builder:
                 anchor = (anchor[0], near.pos[1])
             for _ in range(40):
                 c = cell_of(anchor)
-                if c not in router.hard and c not in router.pin_net and c not in router.occ:
+                # free, and far enough from the net's own pins to leave room for a wire
+                room = min(abs(c[0] - t.cell[0]) + abs(c[1] - t.cell[1]) for t in ts) >= 2
+                if room and c not in router.hard and c not in router.pin_net and c not in router.occ:
                     break
                 anchor = (snap(anchor[0] + text_dir[0] * GRID), snap(anchor[1] + text_dir[1] * GRID))
             length = 2.54 + 1.0 * len(port.name)
             x2, y2 = anchor[0] + text_dir[0] * length, anchor[1] + text_dir[1] * length
-            box = (min(anchor[0], x2), min(anchor[1], y2), max(anchor[0], x2), max(anchor[1], y2))
+            # the label's body starts past its connection point, so wires can still reach
+            # that point from the sides
+            sx, sy = anchor[0] + text_dir[0] * GRID * 0.75, anchor[1] + text_dir[1] * GRID * 0.75
+            box = (min(sx, x2), min(sy, y2), max(sx, x2), max(sy, y2))
             box = (box[0] - (1.27 if text_dir[0] == 0 else 0), box[1] - (1.27 if text_dir[1] == 0 else 0),
                    box[2] + (1.27 if text_dir[0] == 0 else 0), box[3] + (1.27 if text_dir[1] == 0 else 0))
             c0 = cell_of(anchor)

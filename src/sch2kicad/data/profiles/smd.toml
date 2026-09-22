@@ -17,6 +17,7 @@ capacitor_polarized = "2025_PedalDivision_Capacitors:SMD_Cap_D4"
 pot = "2025_PedalDivision_Potentiometers:16mm_Alpha_style"
 trimmer = "2025_PedalDivision_Potentiometers:Trim"
 diode = "2025_PedalDivision_Diodes:Generic"
+schottky = "2025_PedalDivision_Diodes:Generic"     # 1N5817 & co. (the house has one diode symbol)
 led = "2025_PedalDivision_Diodes:LED"
 npn = "Transistor_BJT:Q_NPN_BEC"
 pnp = "Transistor_BJT:Q_PNP_BEC"
@@ -40,7 +41,7 @@ TL071 = "Amplifier_Operational:TL071"
 LM13700 = "Amplifier_Operational:LM13700"
 
 [[footprints]]
-type = "diode"
+type = ["diode", "schottky"]
 footprint = "Diode_SMD:D_SOD-123"
 
 [[footprints]]
@@ -57,9 +58,21 @@ type = "capacitor"
 min_farads = 2.2e-6
 footprint = "2025_PedalDivision_Capacitors:SMD_Cap_1206"
 
+# ICs by pin count: DIP-8 op-amps, DIP-14/16 logic and the LM13700
 [[footprints]]
-type = ["opamp_single", "ic8"]
+type = ["opamp_single", "ic"]
+pins = 8
 footprint = "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
+
+[[footprints]]
+type = "ic"
+pins = 14
+footprint = "2025_PedalDivision_OpAmps:SOIC-14_3.9x8.7mm_P1.27mm"
+
+[[footprints]]
+type = "ic"
+pins = 16
+footprint = "Package_SO:SOIC-16_3.9x9.9mm_P1.27mm"
 
 [flags]
 GND = "2025_PedalDivision_Flags:GND"

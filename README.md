@@ -74,7 +74,8 @@ Aion FX) is in
   `TH_Film_Cap`, `TH_Electrolytic_Cap`, `16mm_Alpha_style` pots (knob name in
   `Label`), `TH_NPN`/`TH_PNP` (E-B-C), `TH_JFET`, `TH_Op_amp_Dual`, the 3PDT
   pad array for IN/OUT/GND. A transistor in another lead order gets the stock
-  KiCad symbol for that order on the same TO-92 footprint.
+  KiCad symbol for that order on the same TO-92 footprint. Other ICs (TL071,
+  LM13700) use the stock KiCad symbol on a DIP package picked by pin count.
 - **smd** — 0805 passives, SMD electrolytics, SOT-23 transistors on symbols in
   SOT-23 order (B-E-C), SOIC op-amps; panel parts stay through-hole.
 
@@ -92,9 +93,9 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
 - **M3 (under way):** build docs end to end, with a cross-check against the doc's
   parts list. Done: PedalPCB Thunder Pipe (63 of 63 parts agree) and Red Muffin
   (60 of 60; 4558 power units on their own filtered rails, TL071 VREF buffer),
-  both regression cases. Parts lists are read from PedalPCB and Aion FX docs.
-  Next: the Aion FX Tri-Vibe (vector schematic), then Parasit Studio's CMOS
-  circuits (their parts lists aren't read yet).
+  and the Aion FX Tri-Vibe (66 of 66; a vector schematic, the LM13700's OTAs and
+  buffers), all regression cases. Parts lists are read from PedalPCB and Aion FX
+  docs. Next: Parasit Studio's CMOS circuits (their parts lists aren't read yet).
 
 ## Development
 

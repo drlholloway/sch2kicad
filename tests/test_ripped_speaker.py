@@ -32,6 +32,7 @@ SAMPLES = sorted((HERE.parent / "samples" / "circuits").glob("*.circuit.json"))
 def test_every_sample_is_ready(tmp_path, circuit):
     rep = verify(build(circuit, tmp_path / "board").sch, render=False)
     assert rep.ok, rep.text()
+    assert rep.erc_warnings == [], rep.text()
 
 
 @pytest.mark.parametrize("circuit", SAMPLES, ids=lambda p: p.name.split(".")[0])
@@ -40,6 +41,7 @@ def test_every_block_is_ready(tmp_path, circuit):
     for sch in save_blocks(circuit, tmp_path / "blocks"):
         rep = verify(sch, render=False)
         assert rep.ok, rep.text()
+        assert rep.erc_warnings == [], rep.text()     # e.g. a local label named like a boundary label
 
 
 @pytest.mark.parametrize("profile", ["tht", "smd"])
@@ -101,3 +103,17 @@ def test_drawn_power_units_are_placed_where_drawn():
     assert Layout(res).unplaced == []
     ic3 = next(r for r in res if r.ref == "IC3")
     assert ic3.pinmap["V+"] == "7" and ic3.pinmap["V-"] == "4"
+
+
+def test_ic_units_follow_pin_numbers():
+    """The Tri-Vibe's LM13700: the drawing's IC4A (pins 1-5) is unit C of KiCad's symbol and
+    its buffers are units D and B; the package comes from the pin count."""
+    from sch2kicad.circuit import load
+    from sch2kicad.parts import load_profile, resolve_all
+    c = load(HERE.parent / "samples" / "circuits" / "trivibe-aionfx.circuit.json")
+    res = [r for r in resolve_all(c, load_profile("tht"), SymbolResolver()) if r.ref == "IC4"]
+    assert {r.part.key: r.unit for r in res} == {"IC4A": 3, "IC4BUF1": 4, "IC4B": 1, "IC4BUF2": 2, "IC4E": 5}
+    assert all(r.problems == [] for r in res)
+    assert {r.footprint for r in res} == {"Package_DIP:DIP-16_W7.62mm"}
+    smd = [r for r in resolve_all(c, load_profile("smd"), SymbolResolver()) if r.ref == "IC4"]
+    assert {r.footprint for r in smd} == {"Package_SO:SOIC-16_3.9x9.9mm_P1.27mm"}

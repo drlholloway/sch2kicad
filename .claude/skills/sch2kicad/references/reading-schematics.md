@@ -109,7 +109,22 @@ reposted — keep conversions private.
 Tri-Vibe) — InDesign PDFs with a **vector** schematic page ("SCHEMATIC"):
 ingest renders it at 300 dpi and writes `text.json` with exact text boxes — use
 those instead of OCR. Crossings are drawn with **hop-over arcs** (not joined).
-Rails as named flags (`VA`, `VB`, `+9V`, `BYP_GND`); op-amp power pins are drawn
-on the units. The parts list (PART / VALUE / TYPE / NOTES, several pages) is a
-text table that ingest reads into `bom`. It also lists hardware (sockets, jacks,
-footswitch, enclosure), which the check skips.
+Rails as named flags: `+9V` (the input), `VA` (filtered supply), `VB` (half
+supply, buffered by an op-amp, so verify notes it is driven by an output), and
+`BYP_GND`, a star ground Aion keeps apart from GND and joins at the power input
+without drawing where. Ask whether to join it to GND. On the Tri-Vibe the user
+said join it, and a note says so. Op-amp power pins are drawn on one unit →
+`supply` on that entry. The LM13700 is drawn as two OTAs (`IC4A` pins 1–5,
+`IC4B` pins 12–16) and two Darlington "transistors" (`IC4_BUF1` 7→8, `IC4_BUF2`
+10→9). Give each its own `ic` entry with its pin numbers and `unit` A, B,
+BUF1, BUF2. The tool finds KiCad's unit from the pins (the stock symbol puts OTA
+B first, so the drawing's IC4A is KiCad's IC4C). The `V+` on the buffers is pin
+11 inside the chip: nothing to wire. The wiring page shows the board's pads
+(`IN`, `GND`, `+V`, `OUT`), so the ports are `IN`, `OUT` and `+9V`. The
+footswitch, status LED and `LEDR` sit on Aion's separate bypass board, which
+the schematic leaves out, but the parts list has LED and LEDR. Ask whether to
+put the status LED on the board (from +9V through LEDR to an `SW` port, as on
+PedalPCB boards) or accept the two rows in `bom_accept`. The parts list (PART /
+VALUE / TYPE / NOTES, several pages) is a text table that ingest reads into
+`bom`. It also lists hardware (sockets, jacks, footswitch, enclosure), which the
+check skips.

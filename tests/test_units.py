@@ -59,6 +59,8 @@ def test_pinout_table():
     assert lookup_pinout("npn", "2N2222") == ("EBC", None)
     assert "C-B-E" in pinout_assumption("npn", "2N2222A")
     assert lookup_pinout("npn", "P2N2222A") == ("CBE", None)
+    assert lookup_pinout("npn", "MPS2222") == ("EBC", None)
+    assert lookup_pinout("npn", "MPS2222A") == ("EBC", None)
     assert pinout_assumption("npn", "2N5089") is None
     order, why = lookup_pinout("npn", "MP38A")
     assert order is None and why

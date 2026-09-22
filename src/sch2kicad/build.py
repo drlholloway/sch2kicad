@@ -6,6 +6,7 @@ import json
 import math
 import re
 import subprocess
+import textwrap
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -210,21 +211,27 @@ class Builder:
             inst = SymbolInstance(lib=res.symbol, ref=res.ref, unit=res.unit, at=pl.origin, orient=pl.orient,
                                   value=res.value, footprint=res.footprint, fields=dict(res.fields),
                                   dnp=res.part.dnp)
-            names = ["Reference", "Value"] + (["Label"] if "Label" in inst.fields else [])
+            # a knob named by its reference (PedalPCB's PRE, TONE) or a value that only
+            # repeats the reference ("LED") is not shown twice
+            names = (["Reference"] + (["Value"] if inst.value != res.ref else [])
+                     + (["Label"] if "Label" in inst.fields and inst.fields["Label"] != res.ref else []))
             if res.part.type == "port" and res.ref.startswith("Switch_Connectors"):
                 names = []
                 inst.hidden_fields |= {"Reference", "Value"}
             dirs = [pl.pin_dir(p.number) for p in pl.pins()]
             inst.field_pos = field_positions(inst, pl.box(), dirs, names) if names else {}
-            for k in inst.fields:
+            for k in list(inst.fields) + ["Value"]:
                 if k not in names:
                     inst.hidden_fields.add(k)
             self.w.add_symbol(inst)
             pl.uuid = inst.uuid
             insts[pl.key] = inst
-            router.block_box(pl.box())
+            router.block_box(pl.box(), owner=pl.key)
             for p in pl.pins():
                 router.block_pin(pl.pin_pos(p.number), pl.pin_dir(p.number), p.length, self.pin_net(pl, p.number))
+        for pl in lay.placed:
+            for p in pl.pins():
+                router.open_escape(pl.pin_pos(p.number), pl.pin_dir(p.number), pl.key)
 
         # terminals per net
         terms: dict[str, list[Terminal]] = {}
@@ -489,8 +496,11 @@ class Builder:
         bx0, by0, bx1, by1 = lay.bounds()
         y = by1 + 30.48
         if self.c.notes:
-            self.w.text("NOTES:\n" + "\n".join(self.c.notes), (snap(bx0), snap(y)), size=1.27, bold=False)
-            y += 2.54 * (len(self.c.notes) + 2)
+            # wrapped so a long note doesn't run far past the drawing
+            lines = [ln for n in self.c.notes
+                     for ln in textwrap.wrap(n, 110, subsequent_indent="   ") or [""]]
+            self.w.text("NOTES:\n" + "\n".join(lines), (snap(bx0), snap(y)), size=1.27, bold=False)
+            y += 2.54 * (len(lines) + 2)
         for u in self.c.uncertain:
             label = "CHECK: " + u.note
             if u.at:
@@ -607,6 +617,10 @@ def write_build_json(b: "Builder", result: BuildResult, circuit_path: Path, out_
         "pinouts": {r.ref: r.pinout for r in b.resolved if r.pinout},
         **(extra or {}),
     }
+    if b.c.bom:
+        # verify compares the values KiCad reports for these parts with the doc's parts list
+        meta["bom"] = {"rows": b.c.bom, "accept": b.c.bom_accept,
+                       "parts": {p.ref: {"type": p.type, "label": p.label} for p in b.c.parts}}
     work = out_dir / "sch2kicad"
     work.mkdir(exist_ok=True)
     (work / "build.json").write_text(json.dumps(meta, indent=2) + "\n")

@@ -57,6 +57,10 @@ The work directory (`<input>.sch2kicad/`, or `-o`) holds `source.png`,
 PDFs: exact text) and a `circuit.json` skeleton. Every coordinate is a pixel
 of `source.png`. Ingest turns a sideways drawing upright by reading its text
 ("turned 90° clockwise..."); glance at `grid.png` to confirm before reading.
+When the doc prints its parts list as a table (PedalPCB, Aion FX), ingest
+reads it into `bom.json` and the skeleton's `"bom"`. Keep it there: verify
+checks the drawing against it. If `circuit.json` already existed, copy the
+rows in yourself.
 
 **2. Read.** Look at `grid.png` for the whole circuit, then read **every
 tile** (they overlap — a part on an edge is whole in a neighbour). Use
@@ -88,6 +92,16 @@ READY
 `problem:` lines block READY; `warning:`/`note:` lines do not, but say them
 back. Verify re-reads KiCad's own netlist and ERC — it never trusts the
 builder. `sch2kicad verify <file.kicad_sch>` re-runs it alone.
+
+With a `"bom"` in `circuit.json`, verify also compares every value KiCad
+reports with the parts list (`parts list: 63 of 63 agree with the drawing`).
+A value that differs, or a listed part missing from the drawing, is a
+`problem:`. Usually it is a misread, so zoom in and read that part again. If
+the drawing and the list really disagree, ask the user which is right, then
+fix the reading or record the answer in `"bom_accept"`
+(`{"R5": "drawing is right, the list has a typo"}`). Knobs named differently
+(SUSTAIN on the drawing, GAIN in the list) and parts the list leaves out (a
+status LED) are warnings: pass them on.
 
 **4. Look at it.** Read `sch2kicad/compare.png` (source on top, KiCad below,
 source cropped to the circuit) and go part by part: every value, every

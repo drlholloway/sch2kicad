@@ -95,6 +95,10 @@ class Circuit:
     blocks: list[Block]
     uncertain: list[Uncertain]
     path: Path | None = None
+    # the build doc's parts list (rows of ref/value/type/notes) and differences from
+    # it the user has looked at and accepted, ref → why
+    bom: list[dict] = field(default_factory=list)
+    bom_accept: dict[str, str] = field(default_factory=dict)
 
     # ------------------------------------------------------------------ nets
     def net(self, name: str) -> Net:
@@ -195,7 +199,9 @@ def from_dict(data: dict) -> Circuit:
     return Circuit(name=name, source=dict(data.get("source") or {}),
                    title_block=dict(data.get("title_block") or {}), nets=nets, parts=parts,
                    ports=ports, texts=texts, notes=[str(n) for n in data.get("notes") or []],
-                   blocks=blocks, uncertain=uncertain)
+                   blocks=blocks, uncertain=uncertain,
+                   bom=[dict(r) for r in data.get("bom") or []],
+                   bom_accept={str(k): str(v) for k, v in (data.get("bom_accept") or {}).items()})
 
 
 # ------------------------------------------------------------ value parsing

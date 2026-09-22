@@ -14,7 +14,7 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import sexpr
+from . import bom, sexpr
 from .kicad_env import footprint_exists, kicad_cli, lib_table
 
 
@@ -30,6 +30,10 @@ class Report:
     unconfirmed: list[str] = field(default_factory=list)
     uncertain: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    bom_rows: int = 0                  # board parts in the doc's parts list (0 = no list)
+    bom_matched: int = 0
+    bom_problems: list[str] = field(default_factory=list)
+    bom_warnings: list[str] = field(default_factory=list)
     components: int = 0
     nets: int = 0
     render: Path | None = None
@@ -38,7 +42,8 @@ class Report:
     @property
     def ok(self) -> bool:
         return (self.netlist_ok and not self.erc_errors and not self.footprint_problems
-                and not self.build_problems and not self.unconfirmed and not self.uncertain)
+                and not self.build_problems and not self.unconfirmed and not self.uncertain
+                and not self.bom_problems)
 
     def text(self) -> str:
         def sect(title, items, mark):
@@ -49,12 +54,18 @@ class Report:
         lines.append(f"  netlist:    {'matches circuit.json pin for pin  OK' if self.netlist_ok else 'DIFFERS'}")
         lines.append(f"  ERC:        {len(self.erc_errors)} errors, {len(self.erc_warnings)} warnings")
         lines.append(f"  footprints: {'all resolve  OK' if not self.footprint_problems else f'{len(self.footprint_problems)} problems'}")
+        if self.bom_rows:
+            state = "OK" if not self.bom_problems else f"{len(self.bom_problems)} differ"
+            lines.append(f"  parts list: {self.bom_matched} of {self.bom_rows} agree with the drawing  {state}")
         lines += sect("netlist differences", self.netlist_diffs, "problem:")
         lines += sect("ERC errors", self.erc_errors, "problem:")
         lines += sect("footprints", self.footprint_problems, "problem:")
         lines += sect("build", self.build_problems, "problem:")
         lines += sect("pinouts to confirm", self.unconfirmed, "problem:")
         lines += sect("needs your eyes (marked CHECK on the sheet)", self.uncertain, "problem:")
+        lines += sect("parts list (re-read the drawing; accept a real difference in bom_accept)",
+                      self.bom_problems, "problem:")
+        lines += sect("parts list", self.bom_warnings, "warning:")
         lines += sect("ERC warnings", self.erc_warnings, "warning:")
         lines += sect("notes", self.notes, "note:")
         if self.compare:
@@ -283,6 +294,14 @@ def verify(sch: Path, build_json: Path | None = None, source_image: Path | None 
                              f"{', '.join(kinds)}) — its boundary nets connect outside the block")
     rep.uncertain = list(meta.get("uncertain", []))
     rep.notes = list(meta.get("notes", [])) + rep.notes
+    if meta.get("bom"):
+        # the values KiCad reports, not the ones circuit.json asked for
+        info = meta["bom"]["parts"]
+        parts = {ref: {"value": c["value"], **info[ref]} for ref, c in comps.items() if ref in info}
+        chk = bom.check(parts, meta["bom"]["rows"], meta["bom"].get("accept"))
+        rep.bom_rows, rep.bom_matched = chk.rows, chk.matched
+        rep.bom_problems, rep.bom_warnings = chk.problems, chk.warnings
+        rep.notes += chk.notes
     if meta.get("labelled_nets"):
         rep.notes.append("joined with net labels instead of wires: " + ", ".join(meta["labelled_nets"]))
     if meta.get("moved"):

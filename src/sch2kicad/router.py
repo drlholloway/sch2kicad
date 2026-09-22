@@ -84,19 +84,23 @@ class Router:
         self.bounds = (int(math.floor(x0 / GRID)), int(math.floor(y0 / GRID)),
                        int(math.ceil(x1 / GRID)), int(math.ceil(y1 / GRID)))
         self.hard: set[Cell] = set()                 # bodies, pin lines
+        self.box_owner: dict[Cell, set[str]] = {}    # which symbol bodies cover a cell
+        self.pin_lines: set[Cell] = set()
         self.pin_net: dict[Cell, str] = {}           # pin tips
         self.occ: dict[Cell, dict[str, set[str]]] = {}   # cell -> net -> {"h","v","n"}
         self.soft: dict[Cell, float] = {}            # cosmetic cost (near other things)
         self.net_cells: dict[str, set[Cell]] = {}
 
     # ............................................................ obstacles
-    def block_box(self, box: tuple[float, float, float, float], inflate: float = 0.6) -> None:
+    def block_box(self, box: tuple[float, float, float, float], inflate: float = 0.6,
+                  owner: str = "") -> None:
         x0, y0, x1, y1 = box
         i0, i1 = math.ceil((x0 - inflate) / GRID - 1e-6), math.floor((x1 + inflate) / GRID + 1e-6)
         j0, j1 = math.ceil((y0 - inflate) / GRID - 1e-6), math.floor((y1 + inflate) / GRID + 1e-6)
         for i in range(i0, i1 + 1):
             for j in range(j0, j1 + 1):
                 self.hard.add((i, j))
+                self.box_owner.setdefault((i, j), set()).add(owner)
 
     def block_pin(self, tip: tuple[float, float], out: tuple[int, int], length: float, net: str | None) -> None:
         """Pin tip belongs to ``net``; the pin's line back to the body is a wall."""
@@ -104,8 +108,23 @@ class Router:
         self.pin_net[c] = net or f"__nc__{c}"
         steps = int(round(length / GRID))
         for k in range(1, max(steps, 1) + 1):
-            self.hard.add((c[0] - out[0] * k, c[1] - out[1] * k))
+            cell = (c[0] - out[0] * k, c[1] - out[1] * k)
+            self.hard.add(cell)
+            self.pin_lines.add(cell)
         self.hard.discard(c)
+
+    def open_escape(self, tip: tuple[float, float], out: tuple[int, int], owner: str) -> None:
+        """Let a pin leave its own symbol. Graphics that reach past a pin tip (an LED's
+        light arrows) put the cells beyond it inside the symbol's box, walling the pin
+        in; clear them along the pin's axis until the box ends. Another symbol's body,
+        a pin tip or a pin line stops the walk."""
+        c = grid_cell(tip, out)
+        while True:
+            c = (c[0] + out[0], c[1] + out[1])
+            owners = self.box_owner.get(c, set())
+            if owner not in owners or owners - {owner} or c in self.pin_net or c in self.pin_lines:
+                return
+            self.hard.discard(c)
 
     def _mark(self, net: str, c: Cell, kind: str) -> None:
         self.occ.setdefault(c, {}).setdefault(net, set()).add(kind)

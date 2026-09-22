@@ -62,9 +62,10 @@ deliberately unconnected and gets a no-connect flag.
 
 ## Part fields
 
-- `ref` — as printed (`R1`, `VR3`, `RLED`, `CLR`). Multi-unit ICs share a ref
-  and differ by `unit` (`U1` + `"unit": "A"`), however the source spells it
-  (`U1A`, `IC1.1`).
+- `ref` — as printed (`R1`, `VR3`, `RLED`, `CLR`). PedalPCB names pots by their
+  knob (`PRE`, `TONE`) and the status LED `LED`; use those as the ref. Multi-unit
+  ICs share a ref and differ by `unit` (`U1` + `"unit": "A"`), however the
+  source spells it (`U1A`, `IC1.1`).
 - `value` — exactly as printed; pots keep their taper letter (`A100K`, `B50K`, `C10K`).
 - `part` — part number for semiconductors and ICs (`2N5089`, `TL072`, `1N5817`).
 - `label` — the knob/switch function printed next to a pot or switch (`FUZZ`). Becomes the `Label` field.
@@ -97,3 +98,14 @@ Unlisted nets are signals. List only what needs a kind:
   group on the sheet and its own schematic with `sch2kicad blocks`.
 - `uncertain` — anything you could not read with confidence. Keep them until the
   user has looked.
+
+## Parts list
+
+- `bom` — the build doc's parts list, one row per line:
+  `{"ref": "D3", "value": "GE", "type": "Germanium Diode", "notes": "(1N34A, ...)", "page": 3}`.
+  Ingest writes it; don't edit the rows (they are what the doc says). Verify
+  checks every part against it. Rows whose type is hardware (sockets, jacks,
+  footswitch, enclosure) are skipped. Pots match by ref or by `label`.
+- `bom_accept` — differences the user has looked at, ref → why:
+  `{"R5": "drawing is right, the list has a typo"}`. They become notes instead of
+  problems.

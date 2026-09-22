@@ -333,6 +333,8 @@ class PartResolver:
                 notes.append(f"{part.ref}: {part.part} assumed {'-'.join(pinout)} for through-hole — {assumed}")
             else:
                 notes.append(f"{part.ref}: {part.part} lead order {'-'.join(pinout)} (from the pinout table)")
+        elif pinout:
+            notes.append(f"{part.ref}: {part.part or part.value} lead order {'-'.join(pinout)} (set in circuit.json)")
         elif not pinout and part.part and not problems:
             problems.append(f"{part.ref}: {part.part} is not in the pinout table; ask for its lead "
                             f"order and set \"pinout\"")

@@ -17,6 +17,8 @@
 "2N5087" = "EBC"
 "2N5088" = "EBC"
 "2N5089" = "EBC"
+"MPS2222" = "EBC"     # ON Semi / Fairchild MPS2222A datasheets; confirmed on the Thunder Pipe
+"MPS2222A" = "EBC"
 "MPSA13" = "EBC"
 "MPSA14" = "EBC"
 "MPSA18" = "EBC"

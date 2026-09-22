@@ -26,7 +26,10 @@ the netlist of the finished schematic and compares it, pin for pin, with
 `fp-lib-table`. It stays **NOT READY** while any transistor's lead order is
 unknown (germanium parts, BF245...) or anything read from the source is marked
 uncertain. Through-hole 2N2222/2N2907 are assumed E-B-C — they also ship
-C-B-E — and every report says so. The render is placed under the source image in
+C-B-E — and every report says so. When the build doc has a parts list (PedalPCB,
+Aion FX), every value KiCad reports is checked against it too: a disagreement or a
+listed part missing from the drawing keeps it NOT READY until the reading is fixed
+or the difference is accepted. The render is placed under the source image in
 `compare.png` for the one check a program can't do: whether the reading was
 right.
 
@@ -48,7 +51,7 @@ samples/RedMuffin-PedalPCB.pdf to KiCad"*.
 
 ```sh
 sch2kicad ingest doc.pdf                  # list pages, suggest the schematic
-sch2kicad ingest doc.pdf --page 3         # extract it: source.png, tiles/, ocr.json, dots.json
+sch2kicad ingest doc.pdf --page 3         # extract it: source.png, tiles/, ocr.json, dots.json, bom.json
 sch2kicad build circuit.json -o out -p tht    # tht (default) or smd; builds and verifies
 sch2kicad verify out/Name.kicad_sch       # re-check a built schematic
 sch2kicad compare out/Name.kicad_sch --open   # original and KiCad side by side
@@ -62,7 +65,7 @@ Exit codes: 0 worked / READY, 1 failed / NOT READY, 2 bad usage.
 `circuit.json` is documented in
 [.claude/skills/sch2kicad/references/circuit-format.md](.claude/skills/sch2kicad/references/circuit-format.md);
 how to read the different sources (Chuck's Boneyard, PedalPCB, Parasit Studio,
-RunOffGroove) is in
+Aion FX) is in
 [reading-schematics.md](.claude/skills/sch2kicad/references/reading-schematics.md).
 
 ## Profiles
@@ -86,8 +89,11 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   third-party and stay out of git; drop them in `samples/` to run `compare`.
 - **M2:** image-processing cross-check of the reading (wire tracing against
   `circuit.json`), rail alignment.
-- **M3:** PedalPCB / Parasit Studio / RunOffGroove PDFs end to end, BOM
-  cross-check against the doc's parts list.
+- **M3 (under way):** build docs end to end, with a cross-check against the doc's
+  parts list. Done: PedalPCB Thunder Pipe (63 of 63 parts agree), now a
+  regression case. Parts lists are read from PedalPCB and Aion FX docs. Next: Red
+  Muffin (op-amps), then the Aion FX Tri-Vibe (vector schematic), then Parasit
+  Studio's CMOS circuits (their parts lists aren't read yet).
 
 ## Development
 

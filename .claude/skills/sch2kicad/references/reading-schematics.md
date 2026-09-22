@@ -21,7 +21,7 @@
 - **Plain crossing = not joined** (no dot). Check: would joining it make nonsense —
   a pot wiper shorted to the rail, a base tied to the supply? Then it's a crossing.
 - **T without a dot** is normally joined; say so in `uncertain` if the style is odd.
-- **Hop-overs** (a little arc where one wire jumps another, RunOffGroove) are crossings.
+- **Hop-overs** (a little arc where one wire jumps another, Aion FX) are crossings.
 - **Same-named labels/flags join** (Vref, VA, VB, +9V, SWGND) even with no wire.
 - A wire ending on a part's body with no dot is a pin; one passing near it is not.
 
@@ -78,12 +78,21 @@ block: Title / Author / company line / File / Revision / Date.
 **PedalPCB build docs** — Affinity Publisher PDFs; the schematic is a large
 embedded image (3000+ px) on the "Schematic Diagram" page (usually 3 or 4),
 sometimes placed turned on the page — the image itself is upright. Faint "PedalPCB"
-watermark logos behind the drawing — ignore them. Pin numbers are printed on
-every part: pots show lugs 1/2/3 (use them for cw/ccw), electrolytics show `+`.
-Op-amps are drawn as units `IC1.1`, `IC1.2` with a separate power unit (`IC1`
-with pins 8/4) — make the power unit the `supply`. Rails are flags: `VCC`,
-`VREF`, ground. LED circuit uses `SWGND`. The parts list is on page 2 as text —
-cross-check every value against it.
+watermark logos behind the drawing — ignore them. Pots show lugs 1/2/3 (use them
+for cw/ccw; which end is up varies pot to pot) and are named by their knob:
+`PRE`, `TONE` is the ref. Transistors show 1/2/3 = E/B/C; electrolytics show `+`;
+resistors and film caps carry no pin numbers. Op-amps are drawn as units `IC1.1`,
+`IC1.2` with a separate power unit (`IC1` with pins 8/4) — make the power unit the
+`supply`. Rails are flags: `VCC`, `VREF`, ground. Pads are small circles:
+`IN`/`OUT` each with a ground pad beside it (the jack sleeve), `SW` and `GND`
+for the footswitch, `+`/`-` for the DC jack. The wiring page shows IN/GND/SW/OUT
+going to the 3PDT, the same as the house pad array, so make the ports `IN`, `OUT`,
+`SW`, `+`, `-`. Leave out the sleeve pads and the GND pad (they are the array's
+GND pad) and say so in a note. The status LED (`LED`, with its resistor to `SW`)
+sits on the board. The parts list (pages 2–3) is a text table that ingest reads
+into `bom`. Its knob names can differ from the drawing's (Thunder Pipe: SUSTAIN
+and VOLUME on the drawing, GAIN and LEVEL in the list), and the status LED isn't
+in it.
 
 **Parasit Studio** — OpenOffice "Build Document" PDFs, schematic on the last
 page, drawn in KiCad, embedded as a low-resolution image **rotated 90° inside
@@ -92,11 +101,11 @@ logic at ~2000 px: read tiles slowly, pin numbers matter. Pin numbers visible;
 rails as flags (`VA`, `+9V`); CD40xx logic appears. The sheet asks not to be
 reposted — keep conversions private.
 
-**RunOffGroove** — InDesign PDFs with a **vector** schematic page ("SCHEMATIC"):
+**Aion FX** (including their adaptations of RunOffGroove circuits, e.g. the
+Tri-Vibe) — InDesign PDFs with a **vector** schematic page ("SCHEMATIC"):
 ingest renders it at 300 dpi and writes `text.json` with exact text boxes — use
 those instead of OCR. Crossings are drawn with **hop-over arcs** (not joined).
-Rails as named flags (`VA`, `VB`, `+9V`, `BYP_GND`). Parts list pages give
-values and types.
-
-**Aion FX** — not sampled yet; expect a clean vector or high-res schematic page
-and a BOM table. Add what you learn here.
+Rails as named flags (`VA`, `VB`, `+9V`, `BYP_GND`); op-amp power pins are drawn
+on the units. The parts list (PART / VALUE / TYPE / NOTES, several pages) is a
+text table that ingest reads into `bom`. It also lists hardware (sockets, jacks,
+footswitch, enclosure), which the check skips.

@@ -8,6 +8,7 @@ Writes a work directory next to the input::
     ocr.json        words with pixel boxes (tesseract, both orientations)
     text.json       exact text with boxes, when the PDF page is vector
     dots.json       junction dots found by shape (filled circles)
+    bom.json        the build doc's parts list, when it has one as a text table
     pages/          thumbnails of every PDF page (with --list or no --page)
     circuit.json    a skeleton with the source filled in (never overwritten)
 
@@ -25,6 +26,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+from . import bom
 from .circuit import SCHEMA
 
 
@@ -322,8 +324,10 @@ def ingest(inp: Path, out: Path | None = None, page: int | None = None, list_onl
     out.mkdir(parents=True, exist_ok=True)
     meta: dict = {"input": str(inp)}
     text: list[dict] = []
+    parts_list: list = []
     if inp.suffix.lower() == ".pdf":
         rows = pdf_pages(inp, out)
+        parts_list = bom.extract(inp)
         if list_only or page is None:
             print(f"{inp.name}: {len(rows)} pages (thumbnails in {out / 'pages'})")
             for r in rows:
@@ -331,6 +335,8 @@ def ingest(inp: Path, out: Path | None = None, page: int | None = None, list_onl
                 print(f"  page {r['page']:2}: score {r['score']:5}  refs~{r['refs']:3}  drawings {r['drawings']:5}  images {ims}")
             best = max(rows, key=lambda r: r["score"])
             print(f"likely schematic: page {best['page']} — re-run with --page N after checking the thumbnail")
+            if parts_list:
+                print(f"parts list: {len(parts_list)} rows on page {bom.pages(parts_list)}")
             return 0
         img, pmeta, text = pdf_schematic(inp, page, out)
         meta.update(pmeta)
@@ -355,8 +361,11 @@ def ingest(inp: Path, out: Path | None = None, page: int | None = None, list_onl
         (out / "text.json").write_text(json.dumps(text, indent=1) + "\n")
     meta["tiles"] = tiles
     (out / "ingest.json").write_text(json.dumps(meta, indent=2) + "\n")
+    if parts_list:
+        (out / "bom.json").write_text(json.dumps(bom.rows_json(parts_list), indent=1) + "\n")
     skel = out / "circuit.json"
-    if not skel.exists():
+    had_skel = skel.exists()
+    if not had_skel:
         skel.write_text(json.dumps({
             "schema": SCHEMA,
             "name": inp.stem,
@@ -365,10 +374,14 @@ def ingest(inp: Path, out: Path | None = None, page: int | None = None, list_onl
             "title_block": {},
             "nets": {"GND": {"kind": "ground"}},
             "parts": [], "ports": [], "texts": [], "notes": [], "blocks": [], "uncertain": [],
+            **({"bom": bom.rows_json(parts_list)} if parts_list else {}),
         }, indent=2) + "\n")
     print(f"{inp.name} → {out}")
     print(f"  source.png {img.width}x{img.height}  ({meta['kind']})")
     print(f"  {len(tiles)} tiles (zoom {tiles[0]['zoom'] if tiles else '-'}x), {len(dots)} junction dots, "
           f"{len(words)} OCR words" + (f", {len(text)} exact text spans" if text else ""))
+    if parts_list:
+        print(f"  parts list: {len(parts_list)} rows from page {bom.pages(parts_list)} → bom.json"
+              + ("" if not had_skel else " (circuit.json already exists: copy them into its \"bom\")"))
     print(f"  circuit.json skeleton: {skel}")
     return 0

@@ -2,9 +2,11 @@
 
 KiCad joins anything that touches at a wire end or a pin tip, so the rules
 here are strict: another net's wire may be crossed only straight through
-(no bend, no end, no junction there), pin tips and symbol bodies are walls,
-and a wire never runs along another wire. A net that cannot be routed under
-those rules falls back to net labels, which are always correct.
+(no bend, no end, no junction there), another net's pin tips and every symbol
+body are walls, and a wire never runs along another wire. A wire may pass
+through a pin tip of its own net — that is a junction, and normalise() splits
+it there. A net that cannot be routed under those rules falls back to net
+labels, which are always correct.
 """
 
 from __future__ import annotations
@@ -99,6 +101,8 @@ class Router:
         j0, j1 = math.ceil((y0 - inflate) / GRID - 1e-6), math.floor((y1 + inflate) / GRID + 1e-6)
         for i in range(i0, i1 + 1):
             for j in range(j0, j1 + 1):
+                if (i, j) in self.pin_net:
+                    continue        # another symbol's pin tip: a wire has to be able to reach it
                 self.hard.add((i, j))
                 self.box_owner.setdefault((i, j), set()).add(owner)
 
@@ -224,8 +228,8 @@ class Router:
                     continue
                 move = DIRS[d]
                 is_target = nc in targets
-                if nc in self.pin_net and not is_target:
-                    continue   # never run a wire across a pin tip, even one of this net
+                if nc in self.pin_net and not is_target and self.pin_net[nc] != net:
+                    continue   # another net's pin tip is a wall; this net's own is a junction
                 if not self._enter_ok(net, nc, move, final=is_target):
                     continue
                 cost = gc + 1.0 + self.soft.get(nc, 0.0)

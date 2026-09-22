@@ -77,6 +77,22 @@ def test_extract_pedalpcb_parts_list():
     assert reading["bom"] == bom.rows_json(rows)
 
 
+@pytest.mark.skipif(not (SAMPLES / "Theremin-Fuzz-doc.pdf").exists(), reason="third-party PDF not present")
+def test_extract_parasit_parts_list():
+    """Parasit Studio prints the list as columns of ref/value pairs under bold headings."""
+    rows = bom.extract(SAMPLES / "Theremin-Fuzz-doc.pdf")
+    assert len(rows) == 34 and bom.pages(rows) == "3"      # the prose around it is not a row
+    by_ref = {r.ref: r for r in rows}
+    assert (by_ref["U1"].value, by_ref["U1"].type) == ("CD4069UBE", "IC")
+    assert (by_ref["BLEND"].value, by_ref["BLEND"].is_pot) == ("B50K", True)
+    assert (by_ref["Octave"].value, by_ref["Octave"].type) == ("SPDT on/on", "Switch")
+    assert (by_ref["D1"].value, by_ref["D1"].type) == ("1N4001", "Diode")
+    assert (by_ref["R14"].value, by_ref["R14"].notes) == ("47K", "*")     # footnote kept apart
+    assert by_ref["CLR"].value == "4.7K-22K"
+    reading = json.loads((SAMPLES / "circuits" / "theremin-fuzz-parasit.circuit.json").read_text())
+    assert reading["bom"] == bom.rows_json(rows)
+
+
 @pytest.mark.skipif(not (SAMPLES / "tri-vibe_documentation.pdf").exists(), reason="third-party PDF not present")
 def test_extract_aion_parts_list():
     rows = bom.extract(SAMPLES / "tri-vibe_documentation.pdf")

@@ -24,6 +24,12 @@ _REF = re.compile(r"^[A-Z][A-Z0-9_+\-]*$")
 _HARDWARE = re.compile(r"socket|jack|enclosure|stomp|footswitch|knob|bezel|standoff|spacer|washer|"
                        r"hook-?up wire|header", re.I)
 _TAPER = re.compile(r"^([ABCWG])(?=\d)|(?<=[\dkKmM])([ABCW])$")
+# a parts list laid out as columns under section headings (Parasit Studio)
+_GRID_HEADS = {"CAPACITORS": "Capacitor", "RESISTORS": "Resistor", "IC'S": "IC", "ICS": "IC",
+               "POTENTIOMETERS": "Potentiometer", "TRIMMERS": "Trimmer", "SWITCHES": "Switch",
+               "DIODES": "Diode", "LEDS": "LED", "TRANSISTORS": "Transistor",
+               "CONNECTORS": "Connector", "HARDWARE": "Hardware", "MISC": "Misc"}
+_GRID_REF = re.compile(r"^[A-Za-z]{1,8}\d{0,3}$")
 VALUE_TYPES = {"resistor", "capacitor", "capacitor_polarized", "inductor", "ldr", "pot", "trimmer"}
 PART_TYPES = {"npn", "pnp", "njfet", "pjfet", "nmos", "pmos", "diode", "zener", "schottky",
               "opamp_single", "opamp_dual", "lm386", "ic"}
@@ -56,6 +62,77 @@ def _lines(words: list, tol: float = 2.5) -> list[tuple[float, list]]:
         else:
             lines.append([yc, [w]])
     return [(yc, sorted(ws, key=lambda w: w[0])) for yc, ws in lines]
+
+
+def _grid_rows(page, pno: int) -> list[Row]:
+    """A parts list laid out as columns of ref/value pairs under bold section headings.
+
+    Parasit Studio prints it that way: pairs of columns side by side, each pair
+    headed "Capacitors", "Resistors", "IC's"..., which says what its rows are. The
+    columns line up exactly, so a column is a set of words sharing a left edge, and
+    a ref column is one whose words look like references.
+    """
+    words = [w for w in page.get_text("words") if w[4].strip()]
+    bold = [sp["bbox"] for b in page.get_text("dict")["blocks"] for line in b.get("lines", [])
+            for sp in line.get("spans", []) if sp["flags"] & 16]
+
+    def is_bold(w) -> bool:
+        cx, cy = (w[0] + w[2]) / 2, (w[1] + w[3]) / 2
+        return any(x0 <= cx <= x1 and y0 <= cy <= y1 for x0, y0, x1, y1 in bold)
+
+    heads = [(w, _GRID_HEADS[w[4].upper().strip(":")]) for w in words
+             if w[4].upper().strip(":") in _GRID_HEADS and is_bold(w)]
+    if len(heads) < 2:
+        return []
+    top = min(w[1] for w, _ in heads)
+    body = [w for w in words if w[1] >= top and not is_bold(w)]
+
+    bins: dict[float, list] = {}
+    for w in body:
+        bins.setdefault(round(w[0] * 2) / 2, []).append(w)
+    cols = {x: ws for x, ws in bins.items() if len(ws) >= 3}
+    ref_cols = {x for x, ws in cols.items()
+                if sum(bool(_GRID_REF.match(w[4])) for w in ws) >= 0.6 * len(ws)}
+    if not ref_cols:
+        return []
+
+    def col_of(w) -> float | None:
+        x = round(w[0] * 2) / 2
+        return x if x in cols else None
+
+    # each heading belongs to the ref column nearest to the left of its middle
+    head_col: list[tuple[float, float, str]] = []          # (y, ref column x, type)
+    for w, kind in heads:
+        left = [x for x in ref_cols if x <= (w[0] + w[2]) / 2]
+        if left:
+            head_col.append((w[1], max(left), kind))
+
+    rows: list[Row] = []
+    steps: list[float] = []
+    last_y = top
+    for y, ws in _lines(body):
+        cells: list[tuple[float, list]] = []
+        for w in ws:
+            if col_of(w) in ref_cols and _GRID_REF.match(w[4]):
+                cells.append((col_of(w), [w]))
+            elif cells:
+                cells[-1][1].append(w)
+        # a real row: the value starts in a column of its own, not mid-sentence
+        cells = [(x, cw) for x, cw in cells if len(cw) > 1 and (col_of(cw[1]) in cols and col_of(cw[1]) not in ref_cols)]
+        if not cells:
+            continue
+        limit = 3 * statistics.median(steps) if steps else 60.0
+        if rows and y - last_y > limit:
+            break                                          # past the list: prose, another section
+        for x, cw in cells:
+            value = " ".join(w[4] for w in cw[1:])
+            mark = re.search(r"\**$", value).group(0)      # 47K*, 4.7K-22K**: a footnote
+            kind = [k for hy, hx, k in head_col if hx == x and hy < y]
+            rows.append(Row(cw[0][4], value[:len(value) - len(mark)] or value,
+                            kind[-1] if kind else "", mark, pno))
+        steps.append(y - last_y)
+        last_y = y
+    return rows
 
 
 def extract(pdf: Path) -> list[Row]:
@@ -98,6 +175,8 @@ def extract(pdf: Path) -> list[Row]:
                     continue
                 steps.append(y - last_y)
                 last_y = y
+            if cols is None:                   # no table on this page: try a column grid
+                rows += _grid_rows(page, pno)
     return rows
 
 
@@ -173,7 +252,7 @@ def check(parts: dict[str, dict], rows: list, accept: dict[str, str] | None = No
 
     for r in board:
         ref = by_ref.get(r.ref.upper())
-        if ref is None and r.is_pot:
+        if ref is None:                        # named by its knob or switch function
             ref = by_label.get(r.ref.upper())
         if ref is None or ref in seen:
             missing.append(r)

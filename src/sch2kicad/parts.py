@@ -120,6 +120,10 @@ def _pinout_table() -> dict:
     return tomllib.loads(text)
 
 
+# 4000-series CMOS, however the maker spells it: CD4069UBE, MC14013B, HEF4046BP, TC4011BP
+_CMOS4000 = re.compile(r"^(?:CD|MC1|HEF|HCF|TC|SN|NTE)?(4\d{3,4})[A-Z]*$")
+
+
 def normalise_part_number(pn: str) -> str:
     return re.sub(r"[\s\-_]", "", pn.upper())
 
@@ -264,6 +268,9 @@ class PartResolver:
                 # suffix grades name the same die: LM13700N, TL071CP
                 lib_id = named.get(key) or next(
                     (v for k, v in sorted(named.items(), key=lambda kv: -len(kv[0])) if key.startswith(k)), "")
+                m = None if lib_id else _CMOS4000.match(key)
+                if m and self.symbols.exists(f"4xxx:{m.group(1)}"):
+                    lib_id = f"4xxx:{m.group(1)}"          # CD4069UBE, MC14013B, HEF4046BP ...
                 if not lib_id:
                     problems.append(f"{part.ref}: no symbol known for {part.part or part.value!r}; "
                                     f"set lib_id in circuit.json")
@@ -310,7 +317,7 @@ class PartResolver:
         # ---- pins
         # an op-amp entry with a supply and no signal pins is a power unit the source
         # draws on its own (PedalPCB's "IC1" with pins 8/4)
-        power_only = ptype in OPAMPS and bool(part.supply) and not part.pins
+        power_only = ptype in OPAMPS | {"ic", "lm386"} and bool(part.supply) and not part.pins
         if power_only:
             pinmap, swappable, p3 = {}, [], []
         else:
@@ -499,9 +506,11 @@ class PartResolver:
         unit = power_units[-1]
         by_name = _pins_by_name(sym, unit)
         pmap, problems = {}, []
+        alias = {"V+": ("VDD", "VCC"), "V-": ("VSS", "VEE", "GND")}
         for k in part.supply:
             key = _SYNONYMS["opamp"].get(k.lower(), k)
-            num = by_name.get(key) or by_name.get(k)
+            num = by_name.get(key) or by_name.get(k) or next(
+                (by_name[a] for a in alias.get(key, ()) if a in by_name), None)
             if num is None:
                 problems.append(f"{part.ref}: supply pin {k!r} not in {sym.lib_id} unit {unit}")
             else:

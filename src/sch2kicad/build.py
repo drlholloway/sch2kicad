@@ -343,13 +343,11 @@ class Builder:
                 continue
             want = self.layout.to_sheet(port.at)
             near = min(ts, key=lambda t: math.dist(t.pos, want))
-            dx, dy = want[0] - near.pos[0], want[1] - near.pos[1]
-            text_dir = (1 if dx > 0 else -1, 0) if abs(dx) >= abs(dy) else (0, 1 if dy > 0 else -1)
-            anchor = (snap(want[0]), snap(want[1]))
-            if text_dir[0] == 0:
-                anchor = (near.pos[0], anchor[1])
-            else:
-                anchor = (anchor[0], near.pos[1])
+            # just off that pin, pointing away from the part: a block is spread out to fit
+            # its symbols, so where the net leaves it in the source says little
+            text_dir = near.out
+            anchor = (snap(near.pos[0] + text_dir[0] * 2 * GRID),
+                      snap(near.pos[1] + text_dir[1] * 2 * GRID))
             for _ in range(40):
                 c = cell_of(anchor)
                 # free, and far enough from the net's own pins to leave room for a wire

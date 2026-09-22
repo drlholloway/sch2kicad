@@ -93,9 +93,11 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
 - **M3 (under way):** build docs end to end, with a cross-check against the doc's
   parts list. Done: PedalPCB Thunder Pipe (63 of 63 parts agree) and Red Muffin
   (60 of 60; 4558 power units on their own filtered rails, TL071 VREF buffer),
-  and the Aion FX Tri-Vibe (66 of 66; a vector schematic, the LM13700's OTAs and
-  buffers), all regression cases. Parts lists are read from PedalPCB and Aion FX
-  docs. Next: Parasit Studio's CMOS circuits (their parts lists aren't read yet).
+  the Aion FX Tri-Vibe (66 of 66; a vector schematic, the LM13700's OTAs and
+  buffers) and Parasit Studio's Theremin Fuzz (33 of 34; CD4069/CD4013/CD4046 on
+  stock symbols), all regression cases. Parts lists are read from PedalPCB, Aion
+  FX and Parasit Studio docs. Next: Parasit Studio's Higgs Particle Phaser, which
+  needs a CD4517 symbol.
 
 ## Development
 

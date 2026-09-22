@@ -335,6 +335,11 @@ class Layout:
                 for u in otips:
                     if abs(t[0] - u[0]) < 1e-3 and abs(t[1] - u[1]) < 1e-3:
                         return True
+            # a tip within the other's pins: the two pin lines would run over each other,
+            # and a wire between them would have nowhere to start
+            if any(_point_in(o.extent(-0.05), t) for t in tips) or \
+               any(_point_in(pl.extent(-0.05), u) for u in otips):
+                return True
             # bodies closer than one grid step are unreadable
             if _boxes_overlap(pl.extent(0.3), o.extent(0.3)) and _boxes_overlap(body, o.extent(0.0)):
                 return True

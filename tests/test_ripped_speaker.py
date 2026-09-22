@@ -117,3 +117,23 @@ def test_ic_units_follow_pin_numbers():
     assert {r.footprint for r in res} == {"Package_DIP:DIP-16_W7.62mm"}
     smd = [r for r in resolve_all(c, load_profile("smd"), SymbolResolver()) if r.ref == "IC4"]
     assert {r.footprint for r in smd} == {"Package_SO:SOIC-16_3.9x9.9mm_P1.27mm"}
+
+
+def test_cmos_logic_symbols_and_drawn_power_units():
+    """The Theremin Fuzz's CD40xx chips: stock 4xxx symbols by part number, a DIP by pin
+    count, and the CD4069/CD4013 power units placed where the drawing puts them."""
+    from sch2kicad.circuit import load
+    from sch2kicad.parts import load_profile, resolve_all
+    c = load(HERE.parent / "samples" / "circuits" / "theremin-fuzz-parasit.circuit.json")
+    res = resolve_all(c, load_profile("tht"), SymbolResolver())
+    by_key = {r.part.key: r for r in res}
+    assert by_key["U1C"].lib_id == "4xxx:4069"          # CD4069 on the drawing
+    assert by_key["U2A"].lib_id == "4xxx:4013"
+    assert by_key["U3"].lib_id == "4xxx:4046"
+    assert by_key["U1C"].footprint == "2025_PedalDivision_OpAmps:DIP-14_W7.62mm"
+    assert by_key["U3"].footprint == "Package_DIP:DIP-16_W7.62mm"
+    power = {r.part.key: r for r in res if r.is_supply_unit}
+    assert sorted(power) == ["U1G", "U2C"]
+    assert all(pin.at for r in power.values() for pin in r.part.pins.values())
+    assert power["U1G"].pinmap == {"VDD": "14", "VSS": "7"}
+    assert all(r.problems == [] for r in res)

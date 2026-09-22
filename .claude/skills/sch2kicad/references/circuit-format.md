@@ -82,6 +82,10 @@ deliberately unconnected and gets a no-connect flag.
     where it is drawn, and a block can list it as `IC1C`.
   - A single-unit op-amp (TL071) has its power pins on the amplifier: put `supply`
     (nets only) on the amplifier's entry, even when the source draws `IC3.2` apart.
+  - Same for a logic chip whose supply box is drawn on its own (`U1` with `VDD`/`VSS`):
+    `{"ref": "U1", "unit": "G", "type": "ic", "part": "CD4069",
+    "supply": {"VDD": ["VA", 340, 255], "VSS": ["GND", 340, 215]}}`. `V+`/`V-` also
+    find `VDD`/`VCC` and `VSS`/`VEE` pins.
 - `footprint`, `lib_id` — overrides, rarely needed.
 - `dnp` — true for parts marked do-not-populate / optional.
 
@@ -111,9 +115,12 @@ Unlisted nets are signals. List only what needs a kind:
 
 - `bom` — the build doc's parts list, one row per line:
   `{"ref": "D3", "value": "GE", "type": "Germanium Diode", "notes": "(1N34A, ...)", "page": 3}`.
-  Ingest writes it; don't edit the rows (they are what the doc says). Verify
-  checks every part against it. Rows whose type is hardware (sockets, jacks,
-  footswitch, enclosure) are skipped. Pots match by ref or by `label`.
+  Ingest writes it; don't edit the rows (they are what the doc says). It reads
+  both a table (PedalPCB, Aion FX) and a grid of column pairs under headings
+  (Parasit Studio). Verify checks every part against it. Rows whose type is
+  hardware (sockets, jacks, footswitch, enclosure) are skipped. A row matches by
+  ref or by the part's `label`, so a knob or switch the list names by function
+  (`VOLUME`, `Octave`) finds the drawn `VOL`, `SW1`.
 - `bom_accept` — differences the user has looked at, ref → why:
   `{"R5": "drawing is right, the list has a typo"}`. They become notes instead of
   problems.

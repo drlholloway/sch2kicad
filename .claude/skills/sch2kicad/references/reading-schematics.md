@@ -99,11 +99,31 @@ and VOLUME on the drawing, GAIN and LEVEL in the list), and the status LED isn't
 in it.
 
 **Parasit Studio** — OpenOffice "Build Document" PDFs, schematic on the last
-page, drawn in KiCad, embedded as a low-resolution image **rotated 90° inside
-the image** — ingest turns it upright; confirm on `grid.png`. Dense CD40xx
-logic at ~2000 px: read tiles slowly, pin numbers matter. Pin numbers visible;
-rails as flags (`VA`, `+9V`); CD40xx logic appears. The sheet asks not to be
-reposted — keep conversions private.
+page, embedded as a low-resolution image **rotated 90° inside the image** —
+ingest turns it upright; confirm on `grid.png`. Dense CD40xx logic at ~2000 px,
+and the dot finder gets little from it: read tiles slowly at 4-6x, pin numbers
+matter. Two kinds of net marker: octagons (`IN`, `OUT`, `+9V`, `VA` — a crossed
+octagon is a rail) and arrows with a name beside a pin (`INPUT`, `GND`,
+`OUTPUT`, or an auto-generated `Net 10`). The same node can carry both
+spellings — the Theremin Fuzz has `IN`/`INPUT` and `OUT`/`OUTPUT` — so make
+each one net and say so in a note. A `J1` connector block is the board's
+off-board pads (`IN`, `G`, `9v`, `OUT`) → ports. CD40xx chips are drawn as
+units (`U1.1`-`U1.6`, `U2.1`) plus a separate box with the supply pins (`VDD`,
+`VSS`): give that box its own `ic` entry with only `supply`, positioned, and it
+is placed where it is drawn. Unit numbers follow the datasheet, so they match
+KiCad's; a part number like `CD4069UBE` finds the stock `4xxx:4069` by itself.
+Unused gates are drawn with their inputs grounded — keep them, a floating CMOS
+input is a fault. Boards carry **build options**: pads (`A`, `B`, `C`, `X`) for
+links or an off-board switch, a second set of pads for another pot, a resistor
+to leave out. The doc's "Build Options" page says what each build needs; ask
+the user which one to draw. The status LED and its resistor are wired off the
+board. The parts list is a grid of ref/value column pairs under bold headings
+("Capacitors", "Resistors", "IC's"...), which ingest reads into `bom`; the
+heading becomes the row's type and a `*` footnote goes to the row's notes. It
+names pots and switches by function (`VOLUME`, `TRIMPOT`, `Octave`) where the
+drawing uses `VOL`, `TRIM1`, `SW1` — put the drawn name in `label` and the
+check pairs them up. The sheet asks not to be reposted — keep conversions
+private.
 
 **Aion FX** (including their adaptations of RunOffGroove circuits, e.g. the
 Tri-Vibe) — InDesign PDFs with a **vector** schematic page ("SCHEMATIC"):

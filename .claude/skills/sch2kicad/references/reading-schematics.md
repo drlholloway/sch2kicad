@@ -174,3 +174,35 @@ PedalPCB boards) or accept the two rows in `bom_accept`. The parts list (PART /
 VALUE / TYPE / NOTES, several pages) is a text table that ingest reads into
 `bom`. It also lists hardware (sockets, jacks, footswitch, enclosure), which the
 check skips.
+
+**Tim Escobedo (Circuit Snippets)** — small hand-placed GIFs, around 460x510,
+one circuit and a paragraph of prose on the page. Everything is crisp black on
+white at 1 px, so read the pixels rather than the tiles when a connection
+matters: a 2 px gap between two capacitor plates is the difference between a
+coupling cap and a piece of wire, and at this size a zoomed crop will not settle
+it. **Almost nothing is labelled.** There are no reference designators except
+the odd one the prose needs (the Wobbletron's `C1`, "can be changed in value for
+a different vibrato tone") — keep that one where the sheet puts it and number
+everything else in reading order, saying so in a note and in the title block, so
+the numbering can be reproduced. Values are printed next to each part but not
+always on every part: the Wobbletron's input coupling cap has none at all, which
+is a question for the user, not a value to invent. The prose under the drawing is
+commentary, not circuit text — but mine it for `notes`, since it names the
+designers to credit and says which parts are meant to be swapped. A version and
+date sit in a corner (`v. 0.9` / `08/04`) → `rev` and `date`. `+9V` is repeated
+as a stub label wherever it is needed rather than drawn as a rail, so it is a
+power net with flags, not `"draw": "wire"`.
+
+Two things to expect. **Pots are often drawn as rheostats** — a resistor box with
+a diagonal arrow through it and only two terminals connected. Wire the wiper to
+one end so the board gets a whole pot: tie it to the end that makes clockwise the
+"more" direction, and put which way round in a note. And **the drawing crosscheck
+cannot help you here**: resistors, pots, the LED and the JFET are hollow outlines
+whose black boundary touches both leads, so tracing pixels walks around the body
+and joins the two nets. Expect every box part to produce a `warning: X, Y are one
+thing in the drawing` naming its own two pins (and a `split` where a body drags
+one pin into a neighbouring net). Read those lists: each one should be accounted
+for by a single part's own body, and any pin pair that is *not* explained that
+way is a real disagreement. The junction-dot detector is also fooled — it reads
+the title's lettering as dots — so filter `dots.json` by position before trusting
+a count.

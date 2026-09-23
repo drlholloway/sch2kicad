@@ -196,13 +196,15 @@ power net with flags, not `"draw": "wire"`.
 Two things to expect. **Pots are often drawn as rheostats** — a resistor box with
 a diagonal arrow through it and only two terminals connected. Wire the wiper to
 one end so the board gets a whole pot: tie it to the end that makes clockwise the
-"more" direction, and put which way round in a note. And **the drawing crosscheck
-cannot help you here**: resistors, pots, the LED and the JFET are hollow outlines
-whose black boundary touches both leads, so tracing pixels walks around the body
-and joins the two nets. Expect every box part to produce a `warning: X, Y are one
-thing in the drawing` naming its own two pins (and a `split` where a body drags
-one pin into a neighbouring net). Read those lists: each one should be accounted
-for by a single part's own body, and any pin pair that is *not* explained that
-way is a real disagreement. The junction-dot detector is also fooled — it reads
-the title's lettering as dots — so filter `dots.json` by position before trusting
-a count.
+"more" direction, and put which way round in a note. And **the junction-dot
+detector is fooled by the title** — it reads the lettering of a big hand-set
+heading as dots — so filter `dots.json` by position before trusting a count.
+
+The drawing crosscheck does work on these, but only since the tracer learned that
+a part's outline is not a wire (the Wobbletron was what taught it). Every part
+here is a hollow shape whose black boundary touches both its leads, or a filled
+one a column of pixels runs straight through, so before that the check produced a
+page of `X, Y are one thing in the drawing` naming a part's own two pins. If a
+sheet in some other style brings those back, they are read the same way: account
+for each one by the single part body that explains it, and any pin pair that is
+*not* explained that way is a real disagreement.

@@ -102,9 +102,14 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   time, by its vectors where the page has them and by its pixels otherwise,
   builds a netlist from conductors alone and compares it with the reading. It
   says which nets the drawing splits or joins differently, which rail a flag
-  really names, and which pins it could not trace, so the coverage is plain.
-  All eight samples agree with their drawings; planted faults — a pin moved to
-  another net, a crossing read as a junction, two rails mixed up — are caught.
+  really names, and which pins it could not trace, so the coverage is plain. A
+  part's own ink is not a conductor: an outline is dropped, and a body a run of
+  pixels goes straight through is cut out from between the two pins it joins —
+  which is what lets the check work on a hand-drawn sheet, where every part is a
+  hollow shape whose boundary touches both its leads. All nine samples agree
+  with their drawings; planted faults — a pin moved to another net, a crossing
+  read as a junction, two rails mixed up, a resistor shorted end to end — are
+  caught.
 - **M3 (done):** build docs end to end, with a cross-check against the doc's
   parts list — every publisher seen so far reads. PedalPCB Thunder Pipe (63 of
   63 parts agree) and Red Muffin (60 of 60; 4558 power units on their own

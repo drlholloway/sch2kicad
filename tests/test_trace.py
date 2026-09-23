@@ -93,3 +93,35 @@ def test_hand_drawn_png_agrees_with_its_reading(tmp_path):
     rep = crosscheck_circuit(c)
     assert rep.disagreements == 0, rep.text()
     assert rep.checked >= 85, rep.text()
+
+
+def test_a_sheet_drawn_in_outlines_agrees_with_its_reading(tmp_path):
+    """Tim Escobedo draws 460 px wide, and every part is a hollow shape whose black
+    boundary touches both its leads. Walk that boundary and you join the two nets
+    the part is there to keep apart — so a body has to be known for a body."""
+    c = _ready(tmp_path, "wobbletron_1.gif", "wobbletron-escobedo.circuit.json")
+    rep = crosscheck_circuit(c)
+    assert rep.disagreements == 0, rep.text()
+    assert rep.unmatched == [], rep.text()
+
+
+def test_an_outline_does_not_carry_current(tmp_path):
+    """R7's box is 6 px across and its corners sit 4 px from its own pins. If the
+    tracer walks round it, the 2.2M's two ends are one thing in the drawing and
+    reading them as one net passes unnoticed — which is the whole fault."""
+    c = _ready(tmp_path, "wobbletron_1.gif", "wobbletron-escobedo.circuit.json")
+    rep = crosscheck_circuit(_wrong_net(c, "R7", "2", "OSC_C"))
+    assert rep.disagreements, "a resistor shorted end to end went unnoticed"
+    assert any("OSC_C" in m and "Q3_B" in m for m in rep.merges), rep.text()
+
+
+def test_a_filled_body_does_not_carry_current(tmp_path):
+    """The LED is a solid triangle sitting on a solid bar, so one column of pixels
+    runs from the resistor above it, straight through the part, to the rail below.
+    Read as a conductor it makes anode and cathode the same node — and no planted
+    fault shows that, because the reading it agrees with is the wrong one."""
+    c = _ready(tmp_path, "wobbletron_1.gif", "wobbletron-escobedo.circuit.json")
+    rep = crosscheck_circuit(c)
+    anode, cathode = rep.pins["D1.A"][1], rep.pins["D1.K"][1]
+    assert anode is not None and cathode is not None, rep.text()
+    assert anode != cathode, "the LED's own body was traced as a wire across it"

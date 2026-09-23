@@ -22,7 +22,15 @@ What counts as a conductor:
 * **Neither** counts ink inside a part: the space a part's own pins span is its
   body, and a body is not a wire. Dropping it is what keeps an op-amp's inputs
   apart, and it can only split a net that should be whole — never join two that
-  should be apart.
+  should be apart. The pins of a symbol sit on or near its outline, so the space
+  they span is nearly the whole of it — what sticks out past them is the stroke
+  itself, the bulge of the circle round a transistor, the corner of a resistor's
+  box. That overhang is a matter of strokes, not of how big the part is drawn,
+  so it is measured in **page units** (``PAGE_UNIT``, ``BODY_REACH``) — and a
+  fixed count of pixels is exactly what gets it right on a 3000 px build doc and
+  wrong on a 460 px hand-drawn GIF, where a resistor's outline stands 3 px off
+  its own lead and a tracer that walks it joins the two nets the part is there
+  to keep apart.
 
 A junction dot joins whatever it sits on, crossing or not.
 """
@@ -37,6 +45,9 @@ from pathlib import Path
 
 Point = tuple[float, float]
 BEHIND_PENALTY = 5.0   # px: how much further a wire may be, to be one that leaves the part
+BODY_REACH = 2.0       # how far past its own pins a symbol's ink reaches, in page units
+PAGE_UNIT = 320        # the smallest thing a page can say: one part in this many of its width
+MIN_NET = 3.0          # a conductor worth matching a pin to, in those units
 
 
 @dataclass(frozen=True)
@@ -162,53 +173,108 @@ class Conductors:
 
 # ------------------------------------------------------------------ bodies
 
-def part_boxes(circuit, margin: float = 2.0) -> list[tuple[float, float, float, float]]:
-    """The space each part's pins span: its body, plus the leads that reach it."""
-    boxes = []
-    for p in circuit.parts:
-        pts = [pin.at for pin in p.pins.values() if pin.at]
-        pts += [at for at in p.supply_at.values() if at]
-        if len(pts) < 2:
-            continue
-        xs = [q[0] for q in pts]
-        ys = [q[1] for q in pts]
-        boxes.append((min(xs) - margin, min(ys) - margin, max(xs) + margin, max(ys) + margin))
-    return boxes
-
-
-def _in_boxes(p: Point, boxes) -> bool:
-    return any(_in_box(p, b) for b in boxes)
-
-
 def _in_box(p: Point, box) -> bool:
     x0, y0, x1, y1 = box
     return x0 <= p[0] <= x1 and y0 <= p[1] <= y1
 
 
-def drop_bodies(segs: list[Seg], boxes, pins: list[Point], keep_tol: float = 2.5) -> list[Seg]:
+def _grow(box, by: float):
+    x0, y0, x1, y1 = box
+    return (x0 - by, y0 - by, x1 + by, y1 + by)
+
+
+def _at(s: Seg, t: float) -> Point:
+    return (s.a[0] + t * (s.b[0] - s.a[0]), s.a[1] + t * (s.b[1] - s.a[1]))
+
+
+def _param(s: Seg, p: Point) -> float:
+    """Where along ``s`` the foot of ``p`` falls, as t in [0, 1]."""
+    (ax, ay), (bx, by) = s.a, s.b
+    l2 = (bx - ax) ** 2 + (by - ay) ** 2
+    if l2 == 0:
+        return 0.0
+    return max(0.0, min(1.0, ((p[0] - ax) * (bx - ax) + (p[1] - ay) * (by - ay)) / l2))
+
+
+def _inside_span(s: Seg, box) -> tuple[float, float] | None:
+    """The stretch of ``s`` that lies inside ``box``, as t in [0, 1]; None if none."""
+    lo, hi = 0.0, 1.0
+    for p0, p1, b0, b1 in ((s.a[0], s.b[0], box[0], box[2]),
+                           (s.a[1], s.b[1], box[1], box[3])):
+        d = p1 - p0
+        if abs(d) < 1e-9:
+            if not b0 <= p0 <= b1:
+                return None
+            continue
+        t0, t1 = (b0 - p0) / d, (b1 - p0) / d
+        lo, hi = max(lo, min(t0, t1)), min(hi, max(t0, t1))
+        if lo > hi:
+            return None
+    return lo, hi
+
+
+def _except(s: Seg, span: tuple[float, float] | None) -> list[Seg]:
+    """``s`` with the stretch ``span`` taken out of it."""
+    if span is None:
+        return [s]
+    lo, hi = span
+    out = []
+    if lo > 0:
+        out.append(Seg(s.a, _at(s, lo)))
+    if hi < 1:
+        out.append(Seg(_at(s, hi), s.b))
+    return out
+
+
+def drop_bodies(segs: list[Seg], circuit, touch: float = 2.0, min_len: float = 1.0) -> list[Seg]:
     """Drop what a part draws of itself, keep what reaches it.
 
-    A segment counts as the part's own when its middle lies inside the space the
-    part's pins span — an outline, a zigzag, a plate. A wire that ends on a pin
-    runs away from the part, so its middle is outside and it survives whole, right
-    up to the point the pin sits on. A lead is kept too, by the one thing that
-    tells it from an outline: it ends where a pin is.
+    Taken part by part, each judged against its own pins. Against one part a
+    segment is one of four things:
+
+    * **through two of its pins** — the part's own body lying between them: a
+      filled diode, the channel bar of a JFET, a plate pair read as one run. Cut
+      the segment there; each pin keeps the wire on its own side.
+    * **through one of its pins** — a lead, or a wire running up to one. Keep it
+      whole: it is the one thing a body edge never does.
+    * **nowhere near a pin, and wholly inside the part's reach** — an outline, a
+      zigzag, an arc of the circle round a transistor. Drop it.
+    * **anything else** — a wire that only passes by. Keep the parts of it outside
+      the space its pins span, which is where a wire cannot be.
+
+    ``touch`` is how near counts as running through a pin: the page's own
+    smallest unit, never a share of the part. A symbol's corner falls a stroke or
+    two from the pin beside it whatever the part's size, and a tolerance that
+    grew with the part would cut real wire out of a big chip's neighbours.
+
+    Dropping and cutting can only split a net that should be whole; neither can
+    join two that should be apart. That is what makes this safe to do at all.
     """
-    keep = {(round(x / keep_tol), round(y / keep_tol)) for x, y in pins}
-
-    def on_pin(p: Point) -> bool:
-        gx, gy = round(p[0] / keep_tol), round(p[1] / keep_tol)
-        return any((gx + dx, gy + dy) in keep for dx in (-1, 0, 1) for dy in (-1, 0, 1))
-
-    out = []
-    for s in segs:
-        mid = ((s.a[0] + s.b[0]) / 2, (s.a[1] + s.b[1]) / 2)
-        # inside one part from end to end, or through the middle of one: its own
-        inside = _in_boxes(mid, boxes) or any(_in_box(s.a, b) and _in_box(s.b, b) for b in boxes)
-        if inside and not (on_pin(s.a) or on_pin(s.b)):
+    for part in circuit.parts:
+        pts = [pin.at for pin in part.pins.values() if pin.at]
+        pts += [at for at in part.supply_at.values() if at]
+        if len(pts) < 2:
             continue
-        out.append(s)
-    return out
+        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+        span = (min(xs), min(ys), max(xs), max(ys))
+        near = _grow(span, BODY_REACH * touch)
+        out = []
+        for s in segs:
+            if (max(s.a[0], s.b[0]) < near[0] or min(s.a[0], s.b[0]) > near[2]
+                    or max(s.a[1], s.b[1]) < near[1] or min(s.a[1], s.b[1]) > near[3]):
+                out.append(s)                       # not this part's business
+                continue
+            on = sorted((_param(s, p) for p in pts if _dist_to_seg(p, s) <= touch))
+            if len(on) >= 2:
+                out += _except(s, (on[0], on[-1]))          # its body, between its pins
+            elif on:
+                out.append(s)                               # a lead runs through its pin
+            elif _in_box(s.a, near) and _in_box(s.b, near):
+                continue                                    # an outline, drawn round it
+            else:
+                out += _except(s, _inside_span(s, _grow(span, touch)))
+        segs = [s for s in out if s.length() >= min_len]
+    return segs
 
 
 def pin_points(circuit) -> list[Point]:
@@ -278,7 +344,7 @@ def raster_segments(path: Path, min_len: int | None = None, max_width: int = 5,
     with Image.open(path) as im:
         rgb = np.asarray(im.convert("RGB")).astype(np.int16)
     if min_len is None:
-        min_len = max(5, round(rgb.shape[1] / 320))
+        min_len = max(5, round(rgb.shape[1] / PAGE_UNIT))
     # ink is dark and colourless. A thin wire comes out grey once the page has been
     # scaled, so the level is generous; what keeps a symbol out is its colour, since
     # Parasit draws wires in black and everything else in blue
@@ -327,6 +393,14 @@ def _group_runs(runs: dict[int, list[tuple[int, int]]], axis: int, max_width: in
         end = max(e for _, _, e in g)
         out.append(Seg((start, mid), (end, mid)) if axis == 0 else Seg((mid, start), (mid, end)))
     return out
+
+
+def page_unit(path: Path) -> float:
+    """The smallest distance this page can mean: a share of how wide it is drawn."""
+    from PIL import Image
+
+    with Image.open(path) as im:
+        return max(2.0, im.width / PAGE_UNIT)
 
 
 def raster_dots(work: Path) -> list[Dot]:
@@ -568,8 +642,7 @@ def crosscheck_circuit(circuit, doc: Path | None = None) -> Crosscheck:
     meta = {}
     if (work / "ingest.json").exists():
         meta = json.loads((work / "ingest.json").read_text())
-    boxes = part_boxes(circuit)
-    pin_tol, min_net = 5.0, 0.0
+    pin_tol, min_net, touch = 5.0, 0.0, 2.0
     if meta.get("kind") == "vector":
         pdf = doc or Path(meta.get("pdf") or meta.get("input"))
         if not pdf.exists():
@@ -587,8 +660,13 @@ def crosscheck_circuit(circuit, doc: Path | None = None) -> Crosscheck:
         segs, dots = raster_segments(image)
         dots = dots or raster_dots(work)
         t_contacts = True
-        pin_tol, min_net = 11.0, 15.0   # a pixel reading of a pin's place is worth a few px
-    segs = [s for s in drop_bodies(segs, boxes, pin_points(circuit)) if s.length() >= 1.0]
+        # a pixel reading of a pin's place is worth a few px; and what makes a
+        # conductor worth matching a pin to goes with the page, since the lead
+        # between two stacked parts on a small sheet is shorter than a stray mark
+        # on a big one
+        touch = page_unit(image)
+        pin_tol, min_net = 11.0, max(6.0, MIN_NET * touch)
+    segs = drop_bodies(segs, circuit, touch=touch)
     cond = Conductors(segs, dots, t_contacts=t_contacts)
     on_pins = {r for r in (cond.net_at(at, pin_tol, min_net) for at in pin_points(circuit)) if r is not None}
     # only rails: a signal's name may be written anywhere, or read wrong off pixels,

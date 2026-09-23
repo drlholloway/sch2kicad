@@ -104,9 +104,10 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   really names, and which pins it could not trace, so the coverage is plain.
   All eight samples agree with their drawings; planted faults — a pin moved to
   another net, a crossing read as a junction, two rails mixed up — are caught.
-- **M3 (under way):** build docs end to end, with a cross-check against the doc's
-  parts list. Done: PedalPCB Thunder Pipe (63 of 63 parts agree) and Red Muffin
-  (60 of 60; 4558 power units on their own filtered rails, TL071 VREF buffer),
+- **M3 (done):** build docs end to end, with a cross-check against the doc's
+  parts list — every publisher seen so far reads. PedalPCB Thunder Pipe (63 of
+  63 parts agree) and Red Muffin (60 of 60; 4558 power units on their own
+  filtered rails, TL071 VREF buffer),
   the Aion FX Tri-Vibe (66 of 66; a vector schematic, the LM13700's OTAs and
   buffers) and Parasit Studio's Theremin Fuzz (33 of 34; CD4069/CD4013/CD4046 on
   stock symbols) and their Higgs Particle Phaser (47 of 50; three CD4517 dual
@@ -130,10 +131,23 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   sits carries no meaning — by the smallest step that frees it, so the rail
   feeding the whole column still routes as wire. The Higgs' three grounded
   supply pins get flags instead of labels, and no sample is left drawn
-  touching. Remaining label fallbacks across the samples: 4. A rail also has to
-  have room *on the paper* now — the Tri-Vibe had been standing IC2's power
-  unit over the top edge, with its VA flag off the sheet entirely, and nothing
-  measured the page because nothing knew to.
+  touching. A rail also has to have room *on the paper* now — the Tri-Vibe had
+  been standing IC2's power unit over the top edge, with its VA flag off the
+  sheet entirely, and nothing measured the page because nothing knew to.
+- **One flag to a node (done):** a rail's flag belongs to the node, not to each
+  pin on it. Pins of one rail within 7.62 mm are joined by a wire and share a
+  single symbol — the Tri-Vibe had VB arrows standing in step beside each other
+  on an op-amp's output and the cap across it. A pin with no room of its own
+  reaches for a flag the rail already has instead of settling for a net label,
+  and where a pin's lead points straight into a neighbour's body, the wire may
+  turn where it stands rather than give up. **No sample falls back to a net
+  label any more: 4 to 0, and none of the nine has an ERC warning.** Two bugs
+  came out of it: a flag stub could step aside and come back on the same axis,
+  drawing one wire exactly over another — invisible on the sheet, and harmless
+  until the wires of a rail started going through the same normaliser as every
+  other net, which keeps one of the pair and left the other's end in the air;
+  and a rail's wires had never gone through that normaliser at all, so a join
+  onto one depended on KiCad inferring a T rather than on a junction dot.
 
 ## Development
 

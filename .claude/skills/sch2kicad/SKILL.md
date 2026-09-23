@@ -133,8 +133,11 @@ The sheet places its own text: references, values and knob names go where
 nothing else is, and any a wire crosses is moved after routing. A chip's power
 unit is eased off its neighbours until both its rails have room for a flag —
 it is the one part worth moving, since where a supply box sits carries no
-meaning and a source often draws it far smaller than KiCad's symbol of it. Two
-things the build will tell you it could not do. `note: joined with net labels
+meaning and a source often draws it far smaller than KiCad's symbol of it. A
+rail's flag belongs to the node and not to each pin on it, so pins of one rail
+a few millimetres apart are wired together under a single symbol, and a pin
+with no room of its own reaches for a flag the rail already has rather than
+settle for a net label. Two things the build will tell you it could not do. `note: joined with net labels
 instead of wires` names a net with no clean route — correct, but it reads
 worse; `note: drawn touching` names parts left with no daylight between them,
 which you can pull apart in KiCad in seconds. To show the user, make a high-resolution side-by-side and open it on

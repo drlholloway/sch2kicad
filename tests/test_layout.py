@@ -266,3 +266,74 @@ def test_field_placement_is_measured_where_the_text_really_goes():
     wide = text_box((0.0, 0.0), "100nF")
     assert wide[2] - wide[0] > wide[3] - wide[1]
     assert math.isclose(wide[3] - wide[1], 1.7)
+
+
+def _wires(root):
+    out = []
+    for item in sexpr.children(root, "wire"):
+        xy = [c for c in (sexpr.child(item, "pts") or [""])[1:] if sexpr.head(c) == "xy"]
+        if len(xy) == 2:
+            out.append(((round(_num(xy[0][1]), 3), round(_num(xy[0][2]), 3)),
+                        (round(_num(xy[1][1]), 3), round(_num(xy[1][2]), 3))))
+    return out
+
+
+def _along(a, b):
+    """The two wires lie on one line and share more than a point."""
+    for i in (0, 1):
+        j = 1 - i
+        if a[0][i] == a[1][i] == b[0][i] == b[1][i]:
+            lo, hi = sorted((a[0][j], a[1][j]))
+            lo2, hi2 = sorted((b[0][j], b[1][j]))
+            return min(hi, hi2) - max(lo, lo2) > 1e-6
+    return False
+
+
+@pytest.mark.parametrize("circuit", SAMPLES, ids=lambda p: p.name.split(".")[0])
+def test_no_wire_is_drawn_over_another(tmp_path, circuit):
+    """One wire on top of another is invisible on the sheet and wrong in the file.
+
+    It happened where a flag's stub stepped aside and came back on the same axis: two
+    wires of one net down the same line, the netlist none the wiser, and the drawing
+    showing a single stroke. It only surfaced when a rail's wires started going through
+    normalise(), which keeps one of the pair and leaves the other's far end dangling.
+    """
+    root = sexpr.parse(build(circuit, tmp_path / "board").sch.read_text())
+    w = _wires(root)
+    doubled = [(a, b) for i, a in enumerate(w) for b in w[i + 1:] if _along(a, b)]
+    assert doubled == []
+
+
+@pytest.mark.parametrize("circuit", SAMPLES, ids=lambda p: p.name.split(".")[0])
+def test_every_pin_of_a_rail_reaches_a_flag(tmp_path, circuit):
+    """No pin on these sheets settles for a net label.
+
+    A label is always correct and always a retreat: the reader has to go hunting for
+    the other end. Every sample now gets a wire or a flag everywhere, so a build that
+    falls back again is a regression and not a fact of life.
+    """
+    res = build(circuit, tmp_path / "board")
+    root = sexpr.parse(res.sch.read_text())
+    assert res.labelled_nets == []
+    assert [str(lb[1]) for lb in sexpr.children(root, "label")] == []
+
+
+def test_two_pins_with_no_room_share_one_flag(tmp_path):
+    """The Theremin's spare inverter and the 3PDT ground pad, 5 mm apart facing each other.
+
+    Neither has anywhere to stand a symbol of its own. Joined, they are one node with
+    one ground on it — which is what the drawing means and what a hand would draw.
+    """
+    theremin = next((p for p in SAMPLES if "theremin" in p.name), None)
+    if theremin is None:
+        pytest.skip("no Theremin sample")
+    root = sexpr.parse(build(theremin, tmp_path / "board").sch.read_text())
+    w = _wires(root)
+    u1_11, pad = (35.56, 115.57), (30.48, 111.76)
+    assert [s for s in w if u1_11 in s], "the spare inverter's ground pin is wired to nothing"
+    assert [s for s in w if pad in s], "the pad's ground pin is wired to nothing"
+    grounds = [s for s in sexpr.children(root, "symbol")
+               if any(str(p[1]) == "Value" and str(p[2]) == "GND" for p in sexpr.children(s, "property"))]
+    near = [g for g in grounds
+            if math.dist((_num(sexpr.child(g, "at")[1]), _num(sexpr.child(g, "at")[2])), u1_11) < 12]
+    assert len(near) == 1, f"{len(near)} ground symbols where one should serve the node"

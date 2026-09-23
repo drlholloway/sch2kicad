@@ -23,6 +23,7 @@ from .symlib import LibSymbol, SymbolResolver
 RED = (200, 0, 0, 1)
 GREY = (90, 90, 90, 1)
 OPEN_PINS = {"open_emitter", "open_collector"}
+SHARE_MM = 7.62      # two flags of one rail closer than this are one node drawn twice
 
 
 @dataclass
@@ -124,8 +125,9 @@ class Builder:
         self.net_items: dict[str, list[str]] = {}
         self.labelled: list[str] = []
         self.text_boxes: list[tuple] = []           # visible field text of placed symbols
-        self.flag_stubs: dict[str, list] = {}     # routed net → PWR_FLAG stub segments
-        self.flag_pins: dict[str, list] = {}      # routed net → PWR_FLAG pin points
+        self.flag_stubs: dict[str, list] = {}     # net → wires drawn to its flags
+        self.flag_pins: dict[str, list] = {}      # net → the points those wires end on
+        self.net_terms: dict[str, list[Terminal]] = {}
         self.open_on_power: set[str] = set()      # nets with an open driver pin and a PWR_FLAG
         self.flag_boxes: list[tuple] = []         # every flag symbol drawn, with its value text
 
@@ -391,10 +393,16 @@ class Builder:
         pending_labels = self._label_terminals(terms, router)
 
         # power and ground nets drawn with flags
+        self.net_terms = terms
         flagged = [n for n in terms if self._draw_as_flags(n)]
+        by_flag = set(flagged)
+        orphans: dict[str, list[Terminal]] = {}
         for net in flagged:
-            for t in terms[net]:
-                self._attach_flag(net, t, router, owner_part.get(t.owner))
+            lead, follow = self._flag_leaders(net, terms[net])
+            pending = [t for t in lead
+                       if not self._attach_flag(net, t, router, owner_part.get(t.owner), label_fail=False)]
+            if pending + follow:
+                orphans[net] = pending + follow
         self._pwr_flags(terms, router)
 
         # route everything else, shortest nets first
@@ -403,6 +411,12 @@ class Builder:
                        key=lambda n: (len(terms[n]), _hpwl(terms[n])))
         for net in order:
             r = router.route_net(net, terms[net])
+            if r.failed_owners:
+                # a pin whose lead points straight into a neighbour's body has one move
+                # left: turn where it stands. A wire that turns at a pin still says what
+                # is connected to what, which two net labels only claim
+                router.rip_up(net)
+                r = router.route_net(net, terms[net], turn_at_tip=True)
             if r.failed_owners:
                 router.rip_up(net)
                 r = NetRoute(net, labelled=True)
@@ -431,9 +445,22 @@ class Builder:
             uu = [self.w.wire(a, b) for a, b in segs] + [self.w.junction(j) for j in juncs]
             self.net_items.setdefault(net, []).extend(uu)
         for net, stub_segs in self.flag_stubs.items():
-            if net not in routed:   # a one-pin net never reached the router
+            if net not in routed and net not in by_flag:   # never reached the router
                 for a, b in stub_segs:
                     self.net_items.setdefault(net, []).append(self.w.wire(a, b))
+        for net in flagged:
+            # signal routes have had their pick of the space; now a pin left without a
+            # flag of its own may reach for one this net already has
+            self._share_flags(net, orphans.get(net, []), router)
+            segs, juncs = normalise(self.flag_stubs.get(net, []),
+                                    [t.pos for t in terms[net]] + self.flag_pins.get(net, []))
+            self.net_items.setdefault(net, []).extend(
+                [self.w.wire(a, b) for a, b in segs] + [self.w.junction(p) for p in juncs])
+            # after normalise every join is end to end, so a pin the net reaches is an end
+            ends = {(round(p[0], 3), round(p[1], 3)) for seg in segs for p in seg}
+            for t in orphans.get(net, []):
+                if (round(t.pos[0], 3), round(t.pos[1], 3)) not in ends:
+                    self._label_pin(net, t)
         for name, anchor, text_dir in pending_labels:
             if not (name in routed and routed[name].labelled):   # its pins carry the label
                 self.w.global_label(name, anchor, text_dir)
@@ -535,7 +562,8 @@ class Builder:
         return sym, net
 
     def _attach_flag(self, net: str, t: Terminal, router: Router, pl: Placed | None,
-                     sym: LibSymbol | None = None, ref: str = "#PWR?") -> bool:
+                     sym: LibSymbol | None = None, ref: str = "#PWR?",
+                     label_fail: bool = True) -> bool:
         """Hang a power flag off a pin: upright if at all possible, like a hand-drawn sheet."""
         if sym is None:
             sym, value = self._flag_symbol(net)
@@ -547,6 +575,8 @@ class Builder:
         up_dir = tuple(int(round(v)) for v in apply(upright.m, *body_lib))
 
         def attempt(path: list[tuple[float, float]], o: Orient, over_text: bool):
+            if _doubles_back(path):
+                return None
             tip = path[-1]
             dx, dy = apply(o.m, pin.x, pin.y)
             origin = (round(tip[0] - dx, 4), round(tip[1] - dy, 4))
@@ -590,31 +620,76 @@ class Builder:
             if best:
                 break
         if best is None:
-            if ref == "#PWR?":  # nothing free: label the pin instead
-                u = self.w.label(net, t.pos, t.out)
-                self.term_owner_items.setdefault(t.owner, []).append(u)
+            if label_fail and ref == "#PWR?":  # nothing free: label the pin instead
+                self._label_pin(net, t)
             return False
         path, o, origin, box = best
         inst = SymbolInstance(lib=sym, ref=ref, unit=1, at=origin, orient=o, value=value)
         inst.field_pos = _lib_field_positions(sym, inst.at, o)
         self.w.add_symbol(inst)
-        items = [inst.uuid]
-        # on a net that is routed as wire, a route may join this stub anywhere along it,
-        # so the stub is drawn with the net's wires, where joins get split end to end
-        routed = not self._draw_as_flags(net)
+        # something may join this stub anywhere along it — another pin's route, or a pin
+        # of this same net with no room for a flag of its own — so the stub is drawn with
+        # the net's other wires, at the end, where joins get split end to end
         for a, b in zip(path, path[1:]):
-            if routed:
-                self.flag_stubs.setdefault(net, []).append((a, b))
-            else:
-                items.append(self.w.wire(a, b))
+            self.flag_stubs.setdefault(net, []).append((a, b))
             router.add_segment(net, cell_of(a), cell_of(b))
-        if routed:
-            self.flag_pins.setdefault(net, []).append(path[-1])
-        self.term_owner_items.setdefault(t.owner, []).extend(items)
+        self.flag_pins.setdefault(net, []).append(path[-1])
+        self.term_owner_items.setdefault(t.owner, []).append(inst.uuid)
         router.block_box(box, inflate=0.3)
         router.pin_net[cell_of(path[-1])] = net
         self.flag_boxes.append(box)
         return True
+
+    def _flag_leaders(self, net: str, ts: list[Terminal]) -> tuple[list[Terminal], list[Terminal]]:
+        """Which of a rail's pins stand a flag of their own, and which share a neighbour's.
+
+        Two pins of one rail a few millimetres apart are one node, and a pair of symbols
+        that close reads as two — the Tri-Vibe had VB arrows in step beside each other on
+        an op-amp's output and the cap across it. A drawn sheet joins such pins and hangs
+        one flag off the pair. The pin that keeps it is the one already pointing the way
+        the symbol stands, so the flag needs no dog-leg to get upright.
+        """
+        sym, _ = self._flag_symbol(net)
+        pin = sym.pins_for(1)[0]
+        up = tuple(int(round(v)) for v in apply(Orient(0, None).m, -pin.outward()[0], -pin.outward()[1]))
+        lead: list[Terminal] = []
+        follow: list[Terminal] = []
+        for t in sorted(ts, key=lambda t: (t.out != up, t.pos[1], t.pos[0])):
+            (follow if any(math.dist(t.pos, u.pos) <= SHARE_MM for u in lead) else lead).append(t)
+        return lead, follow
+
+    def _label_pin(self, net: str, t: Terminal) -> None:
+        u = self.w.label(net, t.pos, t.out)
+        self.term_owner_items.setdefault(t.owner, []).append(u)
+
+    def _share_flags(self, net: str, orphans: list[Terminal], router: Router) -> None:
+        """Wire a pin with no room for a flag of its own to one of this net's that has one.
+
+        Two ground pins facing each other across a few millimetres is the commonest way
+        to run out of room: neither has anywhere to stand a symbol, and each on its own
+        can only give up and take a net label. A sheet drawn by hand answers this without
+        thinking — join them, and let one ground symbol speak for both. Which is also the
+        honest drawing: they are one node, and a wire says so where two labels only claim
+        it. The join may land on another pin, on a flag's stub or on a wire this pass has
+        already added, so every one of them is a place a later orphan can reach too.
+        """
+        for t in orphans:
+            # only a terminal the net's wires actually reach can be shared with: route_net
+            # seeds its tree from those cells, and would go drawing a wire to any other
+            cells = router.net_cells.get(net, set())
+            reach = [u for u in self.net_terms[net] if u is not t and u.cell in cells]
+            # along its own lead first, as a wire should read; failing that, turning at
+            # the tip, which is all a pin walled in on its own side can do
+            r = router.route_net(net, [t, *reach]) if reach else None
+            if r is None or r.failed_owners:
+                r = router.route_net(net, [t, *reach], turn_at_tip=True) if reach else None
+            if r is None or r.failed_owners or not r.segments:
+                # no neighbour to share with, or no way through to one: stand its own
+                self._attach_flag(net, t, router, None, label_fail=False)
+                continue
+            self.flag_stubs.setdefault(net, []).extend(r.segments)
+            if t.stub:                       # an off-grid pin: reach its own grid point
+                self.flag_stubs[net].append(t.stub)
 
     def _path_free(self, path, router: Router, net: str) -> bool:
         cells = []
@@ -817,6 +892,20 @@ def _hpwl(ts: list[Terminal]) -> float:
     xs = [t.pos[0] for t in ts]
     ys = [t.pos[1] for t in ts]
     return (max(xs) - min(xs)) + (max(ys) - min(ys))
+
+
+def _doubles_back(path: list[tuple[float, float]]) -> bool:
+    """Does this path turn back along itself?
+
+    Stepping aside and returning on the same axis draws one wire over another. Two
+    wires of one net on the same line are harmless to the netlist and invisible on the
+    sheet, so nothing caught it — until the wires of a rail started going through
+    normalise(), which drops the duplicate and leaves the longer one's far end in the
+    air. It was never a path worth drawing: it ends up where a shorter one would.
+    """
+    steps = [((b[0] > a[0]) - (b[0] < a[0]), (b[1] > a[1]) - (b[1] < a[1]))
+             for a, b in zip(path, path[1:])]
+    return any(n == (-d[0], -d[1]) for d, n in zip(steps, steps[1:]))
 
 
 def _flag_box(sym: LibSymbol, origin, o: Orient, value: str = ""):

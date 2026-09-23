@@ -192,8 +192,14 @@ class Router:
     def _crossing(self, net: str, c: Cell) -> bool:
         return any(n != net for n in self.occ.get(c, {}))
 
-    def search(self, net: str, start: Cell, first: tuple[int, int], targets: set[Cell],
+    def search(self, net: str, start: Cell, first: tuple[int, int] | None, targets: set[Cell],
                box_pad: int) -> list[Cell] | None:
+        """Cheapest path from ``start`` to any of ``targets``.
+
+        ``first`` is the direction the wire must set off in — a pin's own lead, so the
+        wire reads as continuing it. ``None`` lets it turn at the tip instead, for a pin
+        whose lead points into a wall.
+        """
         tx0 = min(t[0] for t in targets)
         tx1 = max(t[0] for t in targets)
         ty0 = min(t[1] for t in targets)
@@ -228,7 +234,7 @@ class Router:
                 return path[::-1]
             crossing_here = c != start and self._crossing(net, c)
             for d in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                if inc == (0, 0) and d != first:
+                if inc == (0, 0) and first is not None and d != first:
                     continue
                 if inc != (0, 0) and d == (-inc[0], -inc[1]):
                     continue
@@ -256,7 +262,7 @@ class Router:
         return None
 
     # .............................................................. per net
-    def route_net(self, net: str, terms: list[Terminal]) -> NetRoute:
+    def route_net(self, net: str, terms: list[Terminal], turn_at_tip: bool = False) -> NetRoute:
         result = NetRoute(net)
         if len(terms) < 2:
             return result
@@ -277,7 +283,7 @@ class Router:
                 continue
             path = None
             for pad in (8, 24, 80):
-                path = self.search(net, t.cell, t.out, tree, pad)
+                path = self.search(net, t.cell, None if turn_at_tip else t.out, tree, pad)
                 if path:
                     break
             if not path:

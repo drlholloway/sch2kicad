@@ -232,3 +232,64 @@ def test_an_unknown_lead_order_still_asks(tmp_path):
     res = resolve_all(from_dict(data), load_profile("tht"), SymbolResolver())
     q4 = next(r for r in res if r.ref == "Q4")
     assert any("not in the pinout table" in p for p in q4.problems)
+
+
+# ------------------------------------------------------------- quad op-amps
+
+QUAD = HERE.parent / "samples" / "circuits" / "synthetic-quad-opamp.circuit.json"
+
+
+@pytest.mark.parametrize("sym", ["2025_PedalDivision_ICs:TH_Op_amp_Quad",
+                                 "2025_PedalDivision_ICs:SMD_Op_amp_Quad"])
+def test_the_house_quad_is_wired_like_every_other_quad(sym):
+    """The house symbol lives outside this repo, so the order it is drawn in is
+    checked here: amps on 1-2-3, 5-6-7, 8-9-10 and 12-13-14 with V+ on 4 and V- on
+    11, the way a TL074, a TL084 and an LM324 all are. Getting this upside down
+    would not swap a signal, it would cook the chip."""
+    s = SymbolResolver().get(sym)
+    assert s.unit_count == 5
+    got = {u: {p.name: p.number for p in s.pins_for(u)} for u in range(1, 6)}
+    assert got[1] == {"~": "1", "-": "2", "+": "3"}
+    assert got[2] == {"+": "5", "-": "6", "~": "7"}
+    assert got[3] == {"~": "8", "-": "9", "+": "10"}
+    assert got[4] == {"+": "12", "-": "13", "~": "14"}
+    assert got[5] == {"V-": "11", "V+": "4"}
+
+
+@pytest.mark.parametrize("profile,footprint", [
+    ("tht", "2025_PedalDivision_OpAmps:DIP-14_W7.62mm"),
+    ("smd", "2025_PedalDivision_OpAmps:SOIC-14_3.9x8.7mm_P1.27mm"),
+])
+def test_a_quad_fills_four_units_and_stands_its_supply_apart(profile, footprint):
+    """A, B, C, D land on the four amplifiers and the supply on the fifth unit."""
+    from sch2kicad.circuit import load
+    from sch2kicad.parts import load_profile, resolve_all
+    res = [r for r in resolve_all(load(QUAD), load_profile(profile), SymbolResolver())
+           if r.ref == "U1"]
+    amps = [r for r in res if not r.is_supply_unit]
+    assert [r.unit for r in amps] == [1, 2, 3, 4]
+    assert [r.pinmap for r in amps] == [
+        {"-": "2", "+": "3", "out": "1"}, {"-": "6", "+": "5", "out": "7"},
+        {"-": "9", "+": "10", "out": "8"}, {"-": "13", "+": "12", "out": "14"}]
+    supply = next(r for r in res if r.is_supply_unit)
+    assert supply.unit == 5 and supply.pinmap == {"V+": "4", "V-": "11"}
+    assert {r.footprint for r in res} == {footprint}
+    assert not [p for r in res for p in r.problems]
+
+
+def test_an_unfamiliar_quad_says_which_supply_order_it_drew():
+    """The TL074 order is nearly universal but not quite, and a quad wired the other
+    way up is a dead chip. A part the table does not know says so in the report,
+    the way an assumed transistor lead order does."""
+    import json
+
+    from sch2kicad.circuit import from_dict
+    from sch2kicad.parts import load_profile, resolve_all
+    for part, wanted in (("TL074", False), ("TL074CN", False), ("LM324N", False), ("RC4136", True)):
+        data = json.loads(QUAD.read_text())
+        for p in data["parts"]:
+            if p["ref"] == "U1":
+                p["part"] = p["value"] = part
+        res = resolve_all(from_dict(data), load_profile("tht"), SymbolResolver())
+        notes = [n for r in res if r.ref == "U1" for n in r.notes]
+        assert bool([n for n in notes if "V+ on 4 and V- on 11" in n]) is wanted, (part, notes)

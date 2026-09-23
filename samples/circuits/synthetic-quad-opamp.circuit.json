@@ -1,0 +1,48 @@
+{
+  "schema": "sch2kicad/circuit@1",
+  "name": "quad opamp test",
+  "source": {"file": "synthetic", "width": 1700, "height": 900},
+  "notes": ["Four inverting stages on one TL074, so every unit of the house quad symbol is drawn and the supply unit stands on its own."],
+  "nets": {"GND": {"kind": "ground"}, "VCC": {"kind": "power"}, "VREF": {"kind": "power"}},
+  "parts": [
+    {"ref": "R1", "type": "resistor", "value": "10K", "pins": {"1": ["IN", 200, 200], "2": ["A_INV", 300, 200]}},
+    {"ref": "R2", "type": "resistor", "value": "100K", "pins": {"1": ["A_INV", 330, 120], "2": ["A_OUT", 470, 120]}},
+    {"ref": "U1", "unit": "A", "type": "opamp_quad", "part": "TL074", "value": "TL074",
+     "pins": {"-": ["A_INV", 360, 179], "+": ["VREF", 360, 221], "out": ["A_OUT", 455, 200]}},
+
+    {"ref": "R3", "type": "resistor", "value": "10K", "pins": {"1": ["A_OUT", 520, 200], "2": ["B_INV", 620, 200]}},
+    {"ref": "R4", "type": "resistor", "value": "100K", "pins": {"1": ["B_INV", 650, 120], "2": ["B_OUT", 790, 120]}},
+    {"ref": "U1", "unit": "B", "type": "opamp_quad", "part": "TL074", "value": "TL074",
+     "pins": {"-": ["B_INV", 680, 179], "+": ["VREF", 680, 221], "out": ["B_OUT", 775, 200]}},
+
+    {"ref": "R5", "type": "resistor", "value": "10K", "pins": {"1": ["B_OUT", 840, 200], "2": ["C_INV", 940, 200]}},
+    {"ref": "R6", "type": "resistor", "value": "100K", "pins": {"1": ["C_INV", 970, 120], "2": ["C_OUT", 1110, 120]}},
+    {"ref": "U1", "unit": "C", "type": "opamp_quad", "part": "TL074", "value": "TL074",
+     "pins": {"-": ["C_INV", 1000, 179], "+": ["VREF", 1000, 221], "out": ["C_OUT", 1095, 200]}},
+
+    {"ref": "R7", "type": "resistor", "value": "10K", "pins": {"1": ["C_OUT", 1160, 200], "2": ["D_INV", 1260, 200]}},
+    {"ref": "R8", "type": "resistor", "value": "100K", "pins": {"1": ["D_INV", 1290, 120], "2": ["D_OUT", 1430, 120]}},
+    {"ref": "U1", "unit": "D", "type": "opamp_quad", "part": "TL074", "value": "TL074",
+     "pins": {"-": ["D_INV", 1320, 179], "+": ["VREF", 1320, 221], "out": ["D_OUT", 1415, 200]}},
+
+    {"ref": "C1", "type": "capacitor", "value": ".1uF", "pins": {"1": ["D_OUT", 1480, 200], "2": ["OUT", 1560, 200]}},
+    {"ref": "R9", "type": "resistor", "value": "1M", "pins": {"1": ["OUT", 1600, 250], "2": ["GND", 1600, 340]}},
+
+    {"ref": "R10", "type": "resistor", "value": "100K", "pins": {"1": ["VCC", 300, 500], "2": ["VREF", 300, 600]}},
+    {"ref": "R11", "type": "resistor", "value": "100K", "pins": {"1": ["VREF", 300, 660], "2": ["GND", 300, 750]}},
+    {"ref": "C2", "type": "capacitor_polarized", "value": "10uF", "pins": {"+": ["VREF", 430, 620], "-": ["GND", 430, 700]}},
+
+    {"ref": "U1", "unit": "E", "type": "opamp_quad", "part": "TL074", "value": "TL074",
+     "supply": {"V+": ["VCC", 800, 520], "V-": ["GND", 800, 640]}}
+  ],
+  "ports": [
+    {"name": "IN", "net": "IN", "at": [100, 200]},
+    {"name": "OUT", "net": "OUT", "at": [1650, 200]},
+    {"name": "+", "net": "VCC", "at": [100, 500]},
+    {"name": "-", "net": "GND", "at": [100, 560]}
+  ],
+  "blocks": [
+    {"name": "Gain stages", "parts": ["U1", "R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "C1", "R9"]},
+    {"name": "Bias", "parts": ["R10", "R11", "C2"]}
+  ]
+}

@@ -195,10 +195,11 @@ based on symbol groups** brings the footprints in grouped by block.
 
 `tht` (default): Pedal Division TH parts — `TH_Resistor_1/4w`, `TH_Film_Cap`,
 `TH_Electrolytic_Cap`, `16mm_Alpha_style` pots with the knob name in `Label`,
-`TH_NPN`/`TH_PNP` (E-B-C), `TH_JFET` (D-S-G), `TH_Op_amp_Dual`, the 3PDT pad
-array for IN/OUT/GND and loose pads for everything else. A transistor whose
-lead order is not the house order gets the stock KiCad symbol for its order
-on the same TO-92 footprint, so the board is right without bending leads.
+`TH_NPN`/`TH_PNP` (E-B-C), `TH_JFET` (D-S-G), `TH_Op_amp_Dual`,
+`TH_Op_amp_Quad` (V+ on 4, V- on 11), the 3PDT pad array for IN/OUT/GND and
+loose pads for everything else. A transistor whose lead order is not the house
+order gets the stock KiCad symbol for its order on the same TO-92 footprint, so
+the board is right without bending leads.
 
 `smd`: 0805 passives, SMD electrolytics, SOT-23 transistors on B-E-C / D-S-G /
 G-S-D symbols (SOT-23 order, not TO-92 order), SOIC op-amps. Panel parts stay

@@ -21,6 +21,7 @@ npn = "2025_PedalDivision_Transistors:TH_NPN"          # E-B-C on pads 1-2-3
 pnp = "2025_PedalDivision_Transistors:TH_PNP"          # E-B-C on pads 1-2-3
 njfet = "2025_PedalDivision_Transistors:TH_JFET"       # D-S-G on pads 1-2-3
 opamp_dual = "2025_PedalDivision_ICs:TH_Op_amp_Dual"
+opamp_quad = "2025_PedalDivision_ICs:TH_Op_amp_Quad"   # V+ on 4, V- on 11 (TL074/LM324 order)
 lm386 = "2025_PedalDivision_ICs:TH_LM386"
 switch_spdt = "2025_PedalDivision_Switches:SPDT_Toggle_Sw"
 switch_dpdt = "2025_PedalDivision_Switches:DPDT_Toggle_Sw"

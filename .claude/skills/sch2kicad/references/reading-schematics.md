@@ -52,7 +52,10 @@ at the far end of that line, not at the body.
   `2N5457` N-JFETs.
 - **Op-amps**: `+`/`-` inputs as drawn (inverting input is often on top), output at
   the point. Units: `U1A`/`U1B`, `IC1.1`/`IC1.2`, `IC1A`. Power pins (4/8) go in
-  `supply`.
+  `supply`. Count the sections on the ref before choosing the type: two is
+  `opamp_dual` (power 8/4), three or four on one ref is `opamp_quad` (units `A`–`D`,
+  power 4/11). A sheet that says only "typical opamp" without a part number leaves
+  the packaging open — ask which chip before spreading sections across one ref.
 - **Values**: keep the source's spelling. Watch 4.7K vs 47K, 10nF vs 10uF, 1M vs
   1K, 330 vs 33 — zoom in until sure; a value you can't read is `uncertain`.
 - **Read the emitter from the arrow, never from position.** A transistor drawn

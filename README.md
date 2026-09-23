@@ -72,7 +72,8 @@ Aion FX) is in
 
 - **tht** — Pedal Division through-hole parts: `TH_Resistor_1/4w`,
   `TH_Film_Cap`, `TH_Electrolytic_Cap`, `16mm_Alpha_style` pots (knob name in
-  `Label`), `TH_NPN`/`TH_PNP` (E-B-C), `TH_JFET`, `TH_Op_amp_Dual`, the 3PDT
+  `Label`), `TH_NPN`/`TH_PNP` (E-B-C), `TH_JFET`, `TH_Op_amp_Dual`,
+  `TH_Op_amp_Quad` (V+ on 4, V- on 11 — the TL074/LM324 order), the 3PDT
   pad array for IN/OUT/GND. A transistor in another lead order gets the stock
   KiCad symbol for that order on the same TO-92 footprint. Other ICs (TL071,
   the 4000-series logic) use the stock KiCad symbol on a DIP package picked by

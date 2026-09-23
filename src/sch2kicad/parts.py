@@ -25,7 +25,7 @@ POTS = {"pot", "trimmer"}
 BJTS = {"npn", "pnp"}
 FETS = {"njfet", "pjfet", "nmos", "pmos"}
 TRANSISTORS = BJTS | FETS
-OPAMPS = {"opamp_dual", "opamp_single"}
+OPAMPS = {"opamp_dual", "opamp_single", "opamp_quad"}
 SWITCHES = {"switch_spdt", "switch_dpdt"}
 KNOWN_TYPES = TWO_TERMINAL | POLAR_TWO | DIODES | POTS | TRANSISTORS | OPAMPS | SWITCHES | {"lm386", "ic"}
 
@@ -65,6 +65,14 @@ _DEFAULT_SYMBOLS = {
 _PLACEHOLDERS = {"npn": "Device:Q_NPN", "pnp": "Device:Q_PNP",
                  "njfet": "Device:Q_NJFET_DSG", "pjfet": "Device:Q_PJFET_DSG",
                  "nmos": "Device:Q_NMOS", "pmos": "Device:Q_PMOS"}
+
+# The house quad op-amp is wired for the order nearly every 14-pin quad uses:
+# amps on 1-2-3, 5-6-7, 8-9-10, 12-13-14 with V+ on 4 and V- on 11. These are the
+# parts that order is certain for; any other quad gets a note asking for the
+# datasheet, because a quad wired the other way up is a dead chip, not a swapped
+# signal. Prefix match, so TL074CN and LM324N are the same part.
+_STANDARD_QUADS = ("TL074", "TL084", "TL064", "TL044", "LM324", "LM2902", "LM348",
+                   "LF347", "LF444", "MC3403", "TLC274", "OPA4134")
 
 
 def canonical_pin(ptype: str, name: str) -> str:
@@ -266,12 +274,16 @@ class PartResolver:
             lib_id, pinout, p2, n2 = self._transistor_symbol(part)
             problems += p2
             notes += n2
-        elif not lib_id and ptype in ("opamp_single", "ic", "opamp_dual", "lm386"):
+        elif not lib_id and ptype in ("opamp_single", "ic", "opamp_dual", "opamp_quad", "lm386"):
             named = self.profile.data.get("named_parts", {})
             key = normalise_part_number(part.part or part.value)
             named = {normalise_part_number(k): v for k, v in named.items()}
-            if ptype == "opamp_dual":
-                lib_id = self._symbol_for_type("opamp_dual")
+            if ptype in ("opamp_dual", "opamp_quad"):
+                lib_id = self._symbol_for_type(ptype)
+                if ptype == "opamp_quad" and not key.startswith(_STANDARD_QUADS):
+                    notes.append(f"{part.ref}: {part.part or part.value or 'this quad'} drawn with "
+                                 f"V+ on 4 and V- on 11 (the TL074/LM324 order) — check the "
+                                 f"datasheet, and set \"lib_id\" if it is wired another way")
             elif ptype == "lm386":
                 lib_id = self._symbol_for_type("lm386")
             else:

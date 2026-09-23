@@ -24,6 +24,7 @@ pnp = "Transistor_BJT:Q_PNP_BEC"
 njfet = "2025_PedalDivision_Transistors:TH_JFET"      # D-S-G, matches SOT-23 JFETs
 nmos = "Transistor_FET:Q_NMOS_GSD"
 opamp_dual = "2025_PedalDivision_ICs:SMD_Op_amp_Dual"
+opamp_quad = "2025_PedalDivision_ICs:SMD_Op_amp_Quad"   # V+ on 4, V- on 11 (TL074/LM324 order)
 lm386 = "2025_PedalDivision_ICs:TH_LM386"
 switch_spdt = "2025_PedalDivision_Switches:SPDT_Toggle_Sw"
 switch_dpdt = "2025_PedalDivision_Switches:DPDT_Toggle_Sw"

@@ -35,7 +35,7 @@ _GRID_REF = re.compile(r"^[A-Za-z]{1,8}\d{0,3}$")
 _GRID_COL_REF = re.compile(r"^([A-Za-z]{1,4}\d{1,3}|[A-Z]{2,10})$")
 VALUE_TYPES = {"resistor", "capacitor", "capacitor_polarized", "inductor", "ldr", "pot", "trimmer"}
 PART_TYPES = {"npn", "pnp", "njfet", "pjfet", "nmos", "pmos", "diode", "zener", "schottky",
-              "opamp_single", "opamp_dual", "lm386", "ic"}
+              "opamp_single", "opamp_dual", "opamp_quad", "lm386", "ic"}
 
 
 @dataclass

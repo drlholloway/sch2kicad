@@ -36,7 +36,9 @@ njfet = "DSG"
 [pinout_fallbacks]
 npn = "Transistor_BJT:Q_NPN_{pinout}"
 pnp = "Transistor_BJT:Q_PNP_{pinout}"
-njfet = "Transistor_FET:Q_NJFET_{pinout}"
+# KiCad keeps the JFETs in Device; only the MOSFETs are in Transistor_FET.
+njfet = "Device:Q_NJFET_{pinout}"
+pjfet = "Device:Q_PJFET_{pinout}"     # the house has no P-channel symbol, so every one comes from here
 nmos = "Transistor_FET:Q_NMOS_{pinout}"
 pmos = "Transistor_FET:Q_PMOS_{pinout}"
 

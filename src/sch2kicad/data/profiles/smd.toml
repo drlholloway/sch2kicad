@@ -36,6 +36,12 @@ pnp = "BEC"
 njfet = "DSG"
 nmos = "GSD"
 
+# The P-channel parts the table above does not fix: they have no one SOT-23
+# order to assume, so they are drawn in the order the reading gives.
+[pinout_fallbacks]
+pjfet = "Device:Q_PJFET_{pinout}"
+pmos = "Transistor_FET:Q_PMOS_{pinout}"
+
 [named_parts]
 TL071 = "Amplifier_Operational:TL071"
 LM13700 = "sch2kicad:LM13700"    # bias current out of the bottom, not beside the output
@@ -47,7 +53,7 @@ type = ["diode", "schottky"]
 footprint = "Diode_SMD:D_SOD-123"
 
 [[footprints]]
-type = ["npn", "pnp", "njfet", "nmos"]
+type = ["npn", "pnp", "njfet", "pjfet", "nmos", "pmos"]
 footprint = "2025_PedalDivision_Transistors:SOT-23"
 
 [[footprints]]

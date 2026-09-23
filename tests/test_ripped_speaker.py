@@ -172,3 +172,63 @@ def test_open_driver_on_a_power_net_is_allowed(tmp_path):
     other = build(HERE.parent / "samples" / "circuits" / "theremin-fuzz-parasit.circuit.json",
                   tmp_path / "other")                 # no transistor: no override
     assert "erc" not in _json.loads(other.pro.read_text())
+
+
+def _as_fet(data: dict, ptype: str, part: str, pinout: str | None) -> dict:
+    """Turn the Ripped Speaker's BS170 into some other three-lead FET."""
+    for p in data["parts"]:
+        if p["ref"] == "Q4":
+            p["type"], p["part"] = ptype, part
+            p.pop("pinout", None)
+            if pinout:
+                p["pinout"] = pinout
+    return data
+
+
+@pytest.mark.parametrize("ptype,part,pinout,want", [
+    ("njfet", "J201", None, "2025_PedalDivision_Transistors:TH_JFET"),   # the house order
+    ("njfet", "2N5457", "GDS", "Device:Q_NJFET_GDS"),
+    ("pjfet", "J176", "DSG", "Device:Q_PJFET_DSG"),
+    ("pjfet", "J176", "SGD", "Device:Q_PJFET_SGD"),
+    ("pmos", "BS250", "GDS", "Transistor_FET:Q_PMOS_GDS"),
+])
+def test_a_fet_outside_the_house_order_gets_the_symbol_for_its_order(ptype, part, pinout, want):
+    """KiCad keeps the JFETs in Device and only the MOSFETs in Transistor_FET, so the
+    fallback template has to name the right library — it named Transistor_FET for both, and
+    nothing noticed because no sample has a JFET in any order but the house D-S-G."""
+    import json
+    from sch2kicad.circuit import from_dict
+    from sch2kicad.parts import load_profile, resolve_all
+    data = _as_fet(json.loads(CIRCUIT.read_text()), ptype, part, pinout)
+    res = resolve_all(from_dict(data), load_profile("tht"), SymbolResolver())
+    q4 = next(r for r in res if r.ref == "Q4")
+    assert q4.lib_id == want, q4.problems
+    assert q4.problems == []
+
+
+def test_a_p_channel_jfet_is_never_drawn_as_an_npn(tmp_path):
+    """A part with no symbol fell through to Device:Q_NPN. The build is NOT READY either
+    way, but a P-channel JFET drawn as an NPN is a wrong part that reads as a right one."""
+    import json
+    data = _as_fet(json.loads(CIRCUIT.read_text()), "pjfet", "J176", "DSG")
+    data["source"]["image"] = str((CIRCUIT.parent / data["source"]["image"]).resolve())
+    c = tmp_path / "c.json"
+    c.write_text(json.dumps(data))
+    res = build(c, tmp_path / "out")
+    sch = res.sch.read_text()
+    assert "Device:Q_PJFET_DSG" in sch
+    # Q4's three leads still have to land on the right pins of it
+    rep = verify(res.sch, render=False)
+    assert rep.netlist_ok, rep.text()
+    assert rep.erc_warnings == [] and rep.erc_errors == []
+
+
+def test_an_unknown_lead_order_still_asks(tmp_path):
+    """J176 is not in the pinout table: the P-JFET symbol must not make it look settled."""
+    import json
+    from sch2kicad.circuit import from_dict
+    from sch2kicad.parts import load_profile, resolve_all
+    data = _as_fet(json.loads(CIRCUIT.read_text()), "pjfet", "J176", None)
+    res = resolve_all(from_dict(data), load_profile("tht"), SymbolResolver())
+    q4 = next(r for r in res if r.ref == "Q4")
+    assert any("not in the pinout table" in p for p in q4.problems)

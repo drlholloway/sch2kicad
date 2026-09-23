@@ -56,6 +56,16 @@ _DEFAULT_SYMBOLS = {
     "ldr": "Device:R_Photo",
 }
 
+# Drawn when no symbol resolves for a transistor, so the sheet still shows
+# something while the report says why. It matches the device class: the build is
+# NOT READY either way, but a P-channel JFET drawn as an NPN is a wrong part that
+# reads as a right one, which is the one thing a placeholder must not do. KiCad
+# has no unsuffixed JFET symbol, so those name an order the caller has rejected —
+# the problem line says so, and the pins will not map.
+_PLACEHOLDERS = {"npn": "Device:Q_NPN", "pnp": "Device:Q_PNP",
+                 "njfet": "Device:Q_NJFET_DSG", "pjfet": "Device:Q_PJFET_DSG",
+                 "nmos": "Device:Q_NMOS", "pmos": "Device:Q_PMOS"}
+
 
 def canonical_pin(ptype: str, name: str) -> str:
     n = name.strip()
@@ -400,8 +410,9 @@ class PartResolver:
             lib_id = tmpl.format(pinout=use)
             if self.symbols.exists(lib_id):
                 return lib_id, ("" if provisional else use), problems, notes
-        problems.append(f"{part.ref}: no symbol for a {ptype} with lead order {use}")
-        return self._symbol_for_type(ptype) or "Device:Q_NPN", "", problems, notes
+        problems.append(f"{part.ref}: no symbol for a {ptype} with lead order {use}; "
+                        f"drew a {ptype} placeholder")
+        return self._symbol_for_type(ptype) or _PLACEHOLDERS.get(ptype, "Device:Q_NPN"), "", problems, notes
 
     # ...................................................................... pins
     def _pinmap(self, part: Part, sym: LibSymbol, unit: int, pinout: str):

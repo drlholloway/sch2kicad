@@ -439,6 +439,13 @@ def name_nets(cond: Conductors, texts: list[dict], names, on_pins: set[int]) -> 
     nearest conductor that reaches a pin — squarely beside the name and close to
     it, since a flag is written against its own stem and a wire that merely passes
     within reach is neither.
+
+    Which one is nearest is measured to the wire itself, not to the end of it. A
+    stem ends beside its own name, so for a flag the two are the same; but a name
+    written along a wire sits *beside* it while that wire's end is off to one side,
+    and scoring by the end lets a different net's corner that happens to sit under
+    the text win by a pixel. Naming the wrong net is not a near miss here — the
+    names are what join a rail's pins, so it welds two rails into one.
     """
     want = {n.upper(): n for n in names}
     ends = [(p, i) for i, s in enumerate(cond.segs) for p in (s.a, s.b) if cond.find(i) in on_pins]
@@ -456,7 +463,7 @@ def name_nets(cond: Conductors, texts: list[dict], names, on_pins: set[int]) -> 
         for p, i in ends:
             if min(abs(p[0] - c[0]), abs(p[1] - c[1])) > align:
                 continue
-            d = _box_dist(p, box)
+            d = min(_box_dist(p, box), _box_dist(_nearest_on(c, cond.segs[i]), box))
             if d <= reach and (best is None or d < best[0]):
                 best = (d, i)
         if best:

@@ -208,3 +208,32 @@ page of `X, Y are one thing in the drawing` naming a part's own two pins. If a
 sheet in some other style brings those back, they are read the same way: account
 for each one by the single part body that explains it, and any pin pair that is
 *not* explained that way is a real disagreement.
+
+**KiCad-drawn forum sheets** (22358.png, 22359.png) — someone's own KiCad file
+exported as a PNG around 1000 px wide: black wires, blue symbols and values,
+dark red off-page connectors. Clean to read, and the pin numbers printed beside
+every IC pin are the chip's real ones, so a quad op-amp's 1/2/3, 5/6/7, 8/9/10,
+12/13/14 with 4 and 11 confirm the order rather than assume it. Watch for:
+
+- **Off-page connectors** — a letter in a circle (`A`, `B1`, `B2`, `B3`) at each
+  end of a link the drawer did not want to route. They are ordinary named nets,
+  not board pads, so do not make them `ports`. **The crosscheck will report each
+  one as a split** (`A is 2 separate things in the drawing`) and it is right: the
+  drawing really does keep them apart, and the name is what joins them. Expect one
+  per connector and say so.
+- **Switches drawn as thick boxes** with the terminals *inside* the outline. The
+  box is wider than the space its pins span, so tracing walks round it and reports
+  every pole as one thing. Widening what counts as a body far enough to cover it
+  costs real pins elsewhere, so this one stays a known warning.
+- **The same rail written two ways** — a power port `VR` in one half of the sheet
+  and a plain label `Vref` in the other, or a `Power`/`Ground` global label where
+  the rest of the sheet uses a triangle. Ask, then make it one net and note it.
+- **Ground drawn with two different symbols**: a triangle nearly everywhere and
+  one bar/earth symbol. In KiCad those are different nets, so it is worth asking;
+  on 22358 it was a slip and meant GND.
+- **Values but no designators** on some parts while others are numbered. Continue
+  the sheet's own run rather than renumbering it — on 22358 the drawn parts stop
+  at R15 and C9, so the unnumbered ones became R16–R18 and C10–C13.
+- An op-amp **drawn open loop**, no feedback at all, is not a misread to correct:
+  on 22358 it is a comparator squaring the guitar signal for a PLL. Check it by
+  eye, then say so in `notes`.

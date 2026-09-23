@@ -125,3 +125,14 @@ def test_a_filled_body_does_not_carry_current(tmp_path):
     anode, cathode = rep.pins["D1.A"][1], rep.pins["D1.K"][1]
     assert anode is not None and cathode is not None, rep.text()
     assert anode != cathode, "the LED's own body was traced as a wire across it"
+
+
+def test_a_rail_name_goes_to_the_wire_it_is_written_against(tmp_path):
+    """\"Power\" is written along the wire from D1 to the chip's V+, 5 px above it.
+    The V- wire's corner happens to sit 14 px below the same word, and the V+ wire
+    ends off to one side — so scoring a name by where its wire *ends* hands Power
+    to ground, and since names are what join a rail's pins, welds the two rails."""
+    c = _ready(tmp_path, "22358.png", "disorder-22358.circuit.json")
+    rep = crosscheck_circuit(c)
+    assert not any("GND" in m and "Power" in m for m in rep.merges), rep.text()
+    assert rep.misnamed == [], rep.text()

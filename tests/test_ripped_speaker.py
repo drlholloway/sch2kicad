@@ -106,13 +106,14 @@ def test_drawn_power_units_are_placed_where_drawn():
 
 
 def test_ic_units_follow_pin_numbers():
-    """The Tri-Vibe's LM13700: the drawing's IC4A (pins 1-5) is unit C of KiCad's symbol and
-    its buffers are units D and B; the package comes from the pin count."""
+    """The Tri-Vibe's LM13700: units are chosen by pin number, and on our own symbol they
+    come out in the order the datasheet and the drawing both use — IC4A really is unit A.
+    The package comes from the pin count."""
     from sch2kicad.circuit import load
     from sch2kicad.parts import load_profile, resolve_all
     c = load(HERE.parent / "samples" / "circuits" / "trivibe-aionfx.circuit.json")
     res = [r for r in resolve_all(c, load_profile("tht"), SymbolResolver()) if r.ref == "IC4"]
-    assert {r.part.key: r.unit for r in res} == {"IC4A": 3, "IC4BUF1": 4, "IC4B": 1, "IC4BUF2": 2, "IC4E": 5}
+    assert {r.part.key: r.unit for r in res} == {"IC4A": 1, "IC4BUF1": 3, "IC4B": 2, "IC4BUF2": 4, "IC4E": 5}
     assert all(r.problems == [] for r in res)
     assert {r.footprint for r in res} == {"Package_DIP:DIP-16_W7.62mm"}
     smd = [r for r in resolve_all(c, load_profile("smd"), SymbolResolver()) if r.ref == "IC4"]

@@ -38,7 +38,7 @@ nmos = "GSD"
 
 [named_parts]
 TL071 = "Amplifier_Operational:TL071"
-LM13700 = "Amplifier_Operational:LM13700"
+LM13700 = "sch2kicad:LM13700"    # bias current out of the bottom, not beside the output
 # KiCad ships no CD4517; the symbol travels with the project
 CD4517 = "sch2kicad:CD4517"
 

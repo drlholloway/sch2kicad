@@ -74,6 +74,30 @@ def test_pin_synonyms():
     assert canonical_pin("diode", "k") == "K"
 
 
+def test_the_ota_bias_pin_leaves_from_the_bottom():
+    """Why the tool ships its own LM13700 at all.
+
+    KiCad's brings the amplifier bias current (pins 1 and 16) out on the right, a
+    step below the output, so the wire from the LFO has to cross the signal it is
+    meant to control. Ours takes it out of the base of the triangle, which is where
+    the datasheet and every pedal schematic put it.
+    """
+    from pathlib import Path
+
+    from sch2kicad.symlib import _parse_pins
+
+    lib = Path(__file__).resolve().parent.parent / "src" / "sch2kicad" / "data" / "symbols" / "sch2kicad.kicad_sym"
+    node = next(s for s in sexpr.children(sexpr.parse(lib.read_text()), "symbol") if str(s[1]) == "LM13700")
+    pins = {p.number: p for p in _parse_pins(node)}
+    for bias, out, plus, minus in (("1", "5", "3", "4"), ("16", "12", "14", "13")):
+        assert pins[bias].outward() == (0, -1), f"pin {bias} should leave from the bottom"
+        assert pins[out].outward() == (1, 0), f"pin {out} should leave to the right"
+        assert pins[plus].outward() == pins[minus].outward() == (-1, 0)
+    # the drawing's IC4A is pins 1-5, and on this symbol that really is unit A
+    assert pins["1"].unit == 1 and pins["12"].unit == 2
+    assert pins["6"].name == "V-" and pins["11"].name == "V+"
+
+
 def test_normalise_splits_t_joins():
     # a horizontal run with a wire ending on its middle: split + one junction
     segs = [((0.0, 0.0), (5.08, 0.0)), ((2.54, 0.0), (2.54, 2.54))]

@@ -246,6 +246,12 @@ def _point_in(box, p) -> bool:
     return box[0] < p[0] < box[2] and box[1] < p[1] < box[3]
 
 
+def spiral(radius: int) -> list[tuple[int, int]]:
+    """Grid steps, nearest first: the order to try when a part has to shift."""
+    return sorted(((dx, dy) for dx in range(-radius, radius + 1) for dy in range(-radius, radius + 1)),
+                  key=lambda d: (abs(d[0]) + abs(d[1]), abs(d[1]), d))
+
+
 @dataclass
 class Sheet:
     width: float
@@ -369,8 +375,7 @@ class Layout:
 
     def find_spot(self, pl: Placed, others: list[Placed], radius: int = 14) -> tuple[float, float] | None:
         ox, oy = pl.origin
-        cands = sorted(((dx, dy) for dx in range(-radius, radius + 1) for dy in range(-radius, radius + 1)
-                        if (dx, dy) != (0, 0)), key=lambda d: (abs(d[0]) + abs(d[1]), abs(d[1]), d))
+        cands = [d for d in spiral(radius) if d != (0, 0)]
         for dx, dy in cands:
             pl.origin = (snap(ox + dx * GRID), snap(oy + dy * GRID))
             if not self.conflicts(pl, others):
@@ -378,14 +383,23 @@ class Layout:
         pl.origin = (ox, oy)
         return None
 
+    def touching(self, pl: Placed) -> bool:
+        """Is this part left with no daylight against any other?"""
+        box = pl.box()
+        if not _area(box):
+            return False
+        return any(_area(o.box()) and _gap(box, o.box()) < BODY_GAP
+                   for o in self.placed if o is not pl)
+
     def cramped(self) -> list[tuple[str, str]]:
         """Pairs of parts left with no daylight between their bodies.
 
         A source can draw a part far smaller than KiCad's symbol of it — Parasit draw
         a chip's supply as a box a tenth the size of KiCad's power unit — so placing
-        them where the drawing puts them leaves them touching. Easing them apart costs
-        more than it buys (the rail that feeds them then has to thread between them and
-        falls back to labels), so the sheet says which ones to pull apart by hand.
+        them where the drawing puts them leaves them touching. A power unit can be
+        eased apart (nothing about where it sits is worth keeping, so the builder
+        moves it); anything else is left where it was drawn and named here, because
+        moving a part the drawing placed on purpose costs more than it buys.
         """
         out = []
         for i, a in enumerate(self.placed):

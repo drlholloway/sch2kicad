@@ -130,13 +130,14 @@ alone to check: nothing in verify knows that you read 4.7K as 47K. Fix
 `circuit.json` and rebuild until the two match.
 
 The sheet places its own text: references, values and knob names go where
-nothing else is, and any a wire crosses is moved after routing. Two things it
-will tell you it could not do. `note: joined with net labels instead of wires`
-names a net with no clean route — correct, but it reads worse; `note: drawn
-touching` names parts the source drew far smaller than KiCad's symbols of them
-(Parasit's supply boxes), which you can pull apart in KiCad in seconds.
-Spreading them here is not the fix: it costs the rail that feeds them its
-wires. To show the user, make a high-resolution side-by-side and open it on
+nothing else is, and any a wire crosses is moved after routing. A chip's power
+unit is eased off its neighbours until both its rails have room for a flag —
+it is the one part worth moving, since where a supply box sits carries no
+meaning and a source often draws it far smaller than KiCad's symbol of it. Two
+things the build will tell you it could not do. `note: joined with net labels
+instead of wires` names a net with no clean route — correct, but it reads
+worse; `note: drawn touching` names parts left with no daylight between them,
+which you can pull apart in KiCad in seconds. To show the user, make a high-resolution side-by-side and open it on
 their screen (images you read are not shown to them in the terminal):
 
 ```sh

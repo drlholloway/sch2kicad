@@ -47,7 +47,9 @@ BS170 = "Transistor_FET:BS170"
 TL071 = "Amplifier_Operational:TL071"
 TL061 = "Amplifier_Operational:TL061"
 LM741 = "Amplifier_Operational:LM741"
-LM13700 = "Amplifier_Operational:LM13700"
+# KiCad's own LM13700 brings the bias current out beside the output, so the
+# control wire has to cross the signal; ours takes it out of the bottom.
+LM13700 = "sch2kicad:LM13700"
 # KiCad ships no CD4517; the symbol travels with the project
 CD4517 = "sch2kicad:CD4517"
 

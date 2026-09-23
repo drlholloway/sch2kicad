@@ -75,11 +75,15 @@ Aion FX) is in
   `Label`), `TH_NPN`/`TH_PNP` (E-B-C), `TH_JFET`, `TH_Op_amp_Dual`, the 3PDT
   pad array for IN/OUT/GND. A transistor in another lead order gets the stock
   KiCad symbol for that order on the same TO-92 footprint. Other ICs (TL071,
-  LM13700, the 4000-series logic) use the stock KiCad symbol on a DIP package
-  picked by pin count. A part KiCad has no symbol for at all — so far the
-  CD4517 — comes from `src/sch2kicad/data/symbols/sch2kicad.kicad_sym`, which
-  is copied into the built project with a `sym-lib-table` so it still resolves
-  when the project is opened.
+  the 4000-series logic) use the stock KiCad symbol on a DIP package picked by
+  pin count. Two come from the tool's own library
+  `src/sch2kicad/data/symbols/sch2kicad.kicad_sym`, copied into the built
+  project with a `sym-lib-table` so they still resolve when it is opened: the
+  **CD4517**, which KiCad has no symbol for, and the **LM13700**, which it
+  does — but KiCad's brings the amplifier bias current out beside the output,
+  so the wire from the LFO has to cross the signal it controls. Ours takes it
+  out of the base of the triangle, the way the datasheet draws it, and numbers
+  its units in datasheet order, so the drawing's IC4A is unit A.
 - **smd** — 0805 passives, SMD electrolytics, SOT-23 transistors on symbols in
   SOT-23 order (B-E-C), SOIC op-amps; panel parts stay through-hole.
 
@@ -118,6 +122,18 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   obstacles before a pin settles for a net label. Notes and voltages keep off
   the drawing. Across the eight samples nothing overlaps anything, and the
   flags that used to fall back to labels are down from 13 to 5.
+- **The supply column (done):** where a source draws a chip's supply as a box a
+  tenth the size of KiCad's symbol of it, a tidy drawn row lands as a staircase
+  of touching boxes, each ground pin pointing into the next box's body with
+  nowhere to hang a flag. A power unit is now eased off its neighbours until
+  both rails have room — the one part worth moving, since where a supply box
+  sits carries no meaning — by the smallest step that frees it, so the rail
+  feeding the whole column still routes as wire. The Higgs' three grounded
+  supply pins get flags instead of labels, and no sample is left drawn
+  touching. Remaining label fallbacks across the samples: 4. A rail also has to
+  have room *on the paper* now — the Tri-Vibe had been standing IC2's power
+  unit over the top edge, with its VA flag off the sheet entirely, and nothing
+  measured the page because nothing knew to.
 
 ## Development
 

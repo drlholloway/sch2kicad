@@ -150,6 +150,30 @@ def test_nothing_readable_is_covered_up(tmp_path, circuit):
     assert not clashes, f"{circuit.name}:\n  " + "\n  ".join(clashes)
 
 
+@pytest.mark.parametrize("circuit", SAMPLES, ids=lambda p: p.name.split(".")[0])
+def test_nothing_hangs_off_the_page(tmp_path, circuit):
+    """Anything past the paper edge prints as nothing, and the netlist never notices.
+
+    The Tri-Vibe used to stand IC2's power unit over the top edge with its VA flag
+    off the sheet altogether: a power unit put beside its amplifier was checked
+    against the other parts and against nothing else.
+    """
+    from sch2kicad.geometry import PAPERS
+
+    sch = build(circuit, tmp_path / "board").sch
+    root = sexpr.parse(sch.read_text())
+    paper = str(sexpr.value(sexpr.child(root, "paper"), 1, "A4"))
+    w, h = next((pw, ph) for name, pw, ph in PAPERS if name == paper)
+    sheet = Sheet(sch)
+    edge = 2.0
+    off = [f"{what} at {tuple(round(v, 1) for v in box)}"
+           for box, what in sheet.bodies + sheet.texts
+           if box[0] < edge or box[1] < edge or box[2] > w - edge or box[3] > h - edge]
+    off += [f"a wire at {p}" for wire in sheet.wires for p in wire
+            if p[0] < edge or p[1] < edge or p[0] > w - edge or p[1] > h - edge]
+    assert not off, f"{circuit.name} on {paper} ({w}x{h}):\n  " + "\n  ".join(off)
+
+
 def test_a_field_steps_aside_for_what_is_already_there():
     """The whole point of the placer: given somewhere occupied, it finds somewhere else."""
     class FakeSym:
@@ -190,15 +214,39 @@ def test_stacked_fields_do_not_sit_on_each_other():
         assert not _overlaps(a, b, pad=0.0), f"at {angle}°: {pos}"
 
 
-def test_a_note_names_the_parts_drawn_touching(tmp_path):
-    """Where the drawing packs symbols tighter than KiCad's can go, say which."""
+def test_a_power_unit_makes_room_for_its_own_flags(tmp_path):
+    """The Higgs supply column, which used to be a staircase of touching boxes.
+
+    Parasit draw each chip's supply as a small box; KiCad's symbol of it is far
+    bigger, so placing them where the drawing does leaves every ground pin pointing
+    into the next box's body with nowhere to hang a flag. A power unit is the one
+    part whose position says nothing, so it is eased apart until its rails have room,
+    and the grounds come out as flags rather than as labels.
+    """
     higgs = next((p for p in SAMPLES if "higgs" in p.name), None)
     if higgs is None:
         pytest.skip("no Higgs sample")
     res = build(higgs, tmp_path / "board")
-    touching = [n for n in res.notes if "drawn touching" in n]
-    assert touching, res.notes
-    assert "Pull them apart in KiCad" in touching[0]
+    assert not [n for n in res.notes if "drawn touching" in n], res.notes
+    root = sexpr.parse(res.sch.read_text())
+    assert [str(lb[1]) for lb in sexpr.children(root, "label")] == []
+
+
+def test_parts_left_touching_are_still_named(tmp_path):
+    """The note is what is left when nothing can be eased apart, so it has to work."""
+    from sch2kicad.circuit import load as load_circuit
+    from sch2kicad.geometry import Layout
+    from sch2kicad.parts import load_profile, resolve_all
+
+    higgs = next((p for p in SAMPLES if "higgs" in p.name), None)
+    if higgs is None:
+        pytest.skip("no Higgs sample")
+    lay = Layout(resolve_all(load_circuit(higgs), load_profile("tht"), SymbolResolver()))
+    lay.place()
+    a, b = [p for p in lay.placed if p.res.is_supply_unit][:2]
+    b.origin = (a.origin[0] + 1.27, a.origin[1])
+    assert lay.touching(b) and lay.touching(a)
+    assert tuple(sorted((a.res.part.key, b.res.part.key))) in lay.cramped()
 
 
 def test_the_notes_block_clears_everything_parked_below(tmp_path):

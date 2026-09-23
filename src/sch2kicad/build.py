@@ -11,7 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .circuit import Circuit, Part, PinRef, load
-from .geometry import GRID, Layout, Orient, Placed, apply, fit_orientation, pin_outward, pin_world, snap
+from .geometry import (GRID, Layout, Orient, Placed, apply, fit_orientation, pin_outward, pin_world,
+                       snap, spiral)
 from .kicad_env import kicad_cli
 from .parts import Profile, Resolved, canonical_pin, load_profile, resolve_all
 from .router import NetRoute, Router, Terminal, cell_of, normalise
@@ -190,8 +191,13 @@ class Builder:
         return True
 
     def _flag_room(self, pl: Placed, reach: float = 8.9, half: float = 2.54) -> bool:
-        """Is the space each pin points into clear enough for a flag symbol to stand there?"""
+        """Is the space each pin points into clear enough for a flag symbol to stand there?
+
+        Clear of the other parts, and on the paper. A power unit pushed past an edge
+        takes its rail's flag with it, and a flag off the page prints as nothing.
+        """
         exts = [p.extent(0.5) for p in self.layout.placed if p is not pl]
+        px0, py0, px1, py1 = self.layout.sheet.usable
         for p in pl.pins():
             tip = pl.pin_pos(p.number)
             d = pl.pin_dir(p.number)
@@ -202,7 +208,38 @@ class Builder:
                    max(tip[1], far[1]) + (half if d[1] == 0 else 0))
             if any(_overlap(box, e) for e in exts):
                 return False
+            if box[0] < px0 or box[1] < py0 or box[2] > px1 or box[3] > py1:
+                return False
         return True
+
+    def _rails_need_room(self, pl: Placed) -> bool:
+        """Is this part jammed — against a neighbour, or with a rail that has nowhere to go?"""
+        return not self._flag_room(pl) or self.layout.touching(pl)
+
+    def _room_for_supply_rails(self, radius: int = 16) -> None:
+        """Ease a drawn power unit off its neighbours until its rails have room.
+
+        A source can draw a chip's supply as a box a tenth the size of KiCad's symbol
+        of it, so what the drawing shows as a tidy row lands as a staircase of touching
+        boxes, each one's ground pin pointing straight into the next one's body with
+        nowhere to hang a flag. A power unit is the one part whose position says
+        nothing — it carries two rails and no signal — so it is the one part worth
+        moving. The smallest move that frees it is the one taken: the rail that feeds
+        the whole column is routed as wire, and it still has to find all of them.
+        """
+        lay = self.layout
+        for pl in [p for p in lay.placed if p.res.is_supply_unit]:
+            if not self._rails_need_room(pl):
+                continue
+            keep = pl.origin
+            others = [p for p in lay.placed if p is not pl]
+            for dx, dy in spiral(radius):
+                pl.origin = (snap(keep[0] + dx * GRID), snap(keep[1] + dy * GRID))
+                if not lay.conflicts(pl, others, margin=2.54) and not self._rails_need_room(pl):
+                    pl.moved = True
+                    break
+            else:
+                pl.origin = keep      # nowhere better: the sheet says it is drawn touching
 
     def _openness(self, pl: Placed, reach: float = 25.4) -> float:
         """How far the nearest other part is, capped: high means room to spare."""
@@ -283,6 +320,7 @@ class Builder:
                                if self.pin_net(p2, pn.number) == net),
                               key=lambda q: math.dist(q, pl.pin_pos(pl.pins()[0].number)))
                     self._orient_single_pin(pl, tgt)
+        self._room_for_supply_rails()
         self._place_unplaced()
         self.w.paper = lay.sheet.paper
         bx0, by0, bx1, by1 = lay.bounds(margin=12.7)
@@ -410,8 +448,9 @@ class Builder:
             self.notes.append(
                 "drawn touching, because the source draws these far smaller than KiCad's "
                 "symbols are: " + ", ".join(f"{a}/{b}" for a, b in tight)
-                + ". Pull them apart in KiCad if you want the room; moving them here costs "
-                "the rail that feeds them its wires.")
+                + ". Pull them apart in KiCad if you want the room. A power unit is eased "
+                "apart by the builder, since where one sits means nothing; these are parts "
+                "the drawing put where they are on purpose, so they stay.")
         if self.open_on_power:
             self.notes.append(
                 "the house transistor symbols call collector and emitter open drivers, which "

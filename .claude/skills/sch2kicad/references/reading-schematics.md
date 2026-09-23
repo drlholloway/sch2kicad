@@ -160,9 +160,9 @@ said join it, and a note says so. Op-amp power pins are drawn on one unit →
 `supply` on that entry. The LM13700 is drawn as two OTAs (`IC4A` pins 1–5,
 `IC4B` pins 12–16) and two Darlington "transistors" (`IC4_BUF1` 7→8, `IC4_BUF2`
 10→9). Give each its own `ic` entry with its pin numbers and `unit` A, B,
-BUF1, BUF2. The tool finds KiCad's unit from the pins (the stock symbol puts OTA
-B first, so the drawing's IC4A is KiCad's IC4C). The `V+` on the buffers is pin
-11 inside the chip: nothing to wire. The wiring page shows the board's pads
+BUF1, BUF2. The tool finds the symbol's unit from the pins, and on the LM13700
+it ships itself they come out in datasheet order, so the drawing's IC4A is unit
+A. The `V+` on the buffers is pin 11 inside the chip: nothing to wire. The wiring page shows the board's pads
 (`IN`, `GND`, `+V`, `OUT`), so the ports are `IN`, `OUT` and `+9V`. The
 footswitch, status LED and `LEDR` sit on Aion's separate bypass board, which
 the schematic leaves out, but the parts list has LED and LEDR. Ask whether to

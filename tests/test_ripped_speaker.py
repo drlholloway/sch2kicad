@@ -224,11 +224,16 @@ def test_a_p_channel_jfet_is_never_drawn_as_an_npn(tmp_path):
 
 
 def test_an_unknown_lead_order_still_asks(tmp_path):
-    """J176 is not in the pinout table: the P-JFET symbol must not make it look settled."""
+    """J270 is not in the pinout table: the P-JFET symbol must not make it look settled.
+
+    This used to use the J176, until Lane read its datasheet (D-G-S, 2026-09-23) and
+    it went into the table. A test whose premise is a gap has to move when the gap is
+    filled — the thing being checked is that an unknown part still asks, not that any
+    one part is unknown."""
     import json
     from sch2kicad.circuit import from_dict
     from sch2kicad.parts import load_profile, resolve_all
-    data = _as_fet(json.loads(CIRCUIT.read_text()), "pjfet", "J176", None)
+    data = _as_fet(json.loads(CIRCUIT.read_text()), "pjfet", "J270", None)
     res = resolve_all(from_dict(data), load_profile("tht"), SymbolResolver())
     q4 = next(r for r in res if r.ref == "Q4")
     assert any("not in the pinout table" in p for p in q4.problems)

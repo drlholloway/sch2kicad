@@ -104,3 +104,20 @@ def test_normalise_splits_t_joins():
     out, juncs = normalise(segs, pins=[(0.0, 0.0), (5.08, 0.0), (2.54, 2.54)])
     assert len(out) == 3
     assert juncs == [(2.54, 0.0)]
+
+
+def test_a_p_channel_jfet_keeps_its_own_lead_order():
+    """J176 is D-G-S through-hole, not the house D-S-G. A part whose order differs
+    gets the stock KiCad symbol for that order on the same TO-92 footprint, so the
+    board is right without bending legs — the path added in 2b5da67, now exercised
+    by a real circuit (the Gargler's Q2) rather than only by a synthetic one."""
+    from sch2kicad.parts import resolve_all, load_profile
+    from sch2kicad.symlib import SymbolResolver
+    from sch2kicad.circuit import from_dict
+    c = from_dict({"schema": "sch2kicad/circuit@1", "name": "t", "parts": [
+        {"ref": "Q1", "type": "pjfet", "part": "J176",
+         "pins": {"G": ["G", 10, 20], "D": ["D", 20, 10], "S": ["S", 20, 30]}}]})
+    got = resolve_all(c, load_profile("tht"), SymbolResolver())[0]
+    assert got.lib_id == "Device:Q_PJFET_DGS", got.lib_id
+    assert "TO-92" in got.footprint, got.footprint
+    assert got.problems == []

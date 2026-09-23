@@ -237,3 +237,21 @@ every IC pin are the chip's real ones, so a quad op-amp's 1/2/3, 5/6/7, 8/9/10,
 - An op-amp **drawn open loop**, no feedback at all, is not a misread to correct:
   on 22358 it is a comparator squaring the guitar signal for a PLL. Check it by
   eye, then say so in `notes`.
+
+**Escobedo's bigger sheets** (Phuncgnosis, Gargler) add two things the Wobbletron
+did not. **Crossings are a break in the wire being jumped**, one pixel each side,
+not an arc — so read the pixels at every crossing, and expect the drawing
+cross-check to join them anyway, since its own join tolerance is wider than the
+gap. On the Gargler that is one warning, and the pixels settle it. And **a filled
+symbol body is read as a junction dot by ingest**: the Phuncgnosis's LED triangles
+all came back in `dots.json`, and a dot joins whatever it sits on, so a pin placed
+within a few pixels of a filled triangle or a diode's bar gets welded to the far
+side of the part. Put those pins on the lead, clear of the body, and the cut rule
+in `drop_bodies` does the rest.
+
+Two more habits from these two. Escobedo **puts the legend in the drawing**
+(`U = typical opamp`, `U2 = 741 only`, `Q1 = 2n3904`, `Q2 = J176`) — read it
+before the parts, it is the only place the semiconductors are named, and where it
+says "typical opamp" the packaging is yours to choose. And a **panel switch the
+profiles have no type for** (the Gargler's 2P3T) is not a reason to stop: bring
+its nodes out as pads, put the wiring in a note, and the board is buildable.

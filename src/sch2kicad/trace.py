@@ -18,7 +18,10 @@ What counts as a conductor:
   no connection.
 * **Pixels** — long axis-aligned runs of ink, which is what a wire looks like and
   what text and a symbol's outline do not. Here an end touching another run's
-  middle is a real T-junction, because a raster gives no better evidence.
+  middle is a real T-junction, because a raster gives no better evidence. Which
+  of the page's colours *is* the ink is read from the drawing rather than assumed
+  (``wire_ink``): only a wire runs a twentieth of the page in a straight line, so
+  that is what picks it. A page drawn in one colour picks that colour.
 * **Neither** counts ink inside a part: the space a part's own pins span is its
   body, and a body is not a wire. Dropping it is what keeps an op-amp's inputs
   apart, and it can only split a net that should be whole — never join two that
@@ -48,6 +51,8 @@ BEHIND_PENALTY = 5.0   # px: how much further a wire may be, to be one that leav
 BODY_REACH = 2.0       # how far past its own pins a symbol's ink reaches, in page units
 PAGE_UNIT = 320        # the smallest thing a page can say: one part in this many of its width
 MIN_NET = 3.0          # a conductor worth matching a pin to, in those units
+COLOUR_STEPS = 6       # how finely two colours are told apart, per channel
+WIRE_RUN = 20          # only a wire runs this share of the page in a straight line
 
 
 @dataclass(frozen=True)
@@ -329,6 +334,64 @@ def vector_segments(pdf: Path, page_no: int, scale: float) -> tuple[list[Seg], l
 
 # ------------------------------------------------------------------ raster
 
+def _long_ink(mask, least: int) -> int:
+    """How much of ``mask`` sits in axis-aligned runs of ``least`` pixels or more."""
+    import numpy as np
+
+    total = 0
+    for m in (mask, mask.T):
+        pad = np.zeros((m.shape[0], m.shape[1] + 2), dtype=bool)
+        pad[:, 1:-1] = m
+        d = np.diff(pad.astype(np.int8), axis=1).ravel()
+        runs = np.flatnonzero(d == -1) - np.flatnonzero(d == 1)
+        total += int(runs[runs >= least].sum())
+    return total
+
+
+def wire_ink(rgb, min_len: int, ink_level: int = 170):
+    """Which of the colours on this page is the one the wires are drawn in.
+
+    Ink is what stands far enough off the page, measured in whichever channel
+    stands furthest. That matters: a saturated green wire is as far from white as
+    a black one, but its *darkest* channel is bright, so the older test — dark and
+    colourless — kept a navy symbol and lost the wire it was drawn beside.
+
+    Which colour is the wires is then read from the drawing instead of assumed.
+    Anything a page is drawn in comes in one colour per kind of thing, and only a
+    wire runs a twentieth of the page in a straight line: a resistor's outline is
+    as long as a resistor. So each colour is scored by how much of its ink lies in
+    runs that long, and the winner is the ink. Blending toward white scales all
+    three channels together and leaves the direction alone, so a colour's paler
+    edge is counted with its core rather than as a colour of its own.
+
+    A page drawn in one colour picks that colour, which is what every sheet before
+    22359 did anyway. A page that draws its wires in two colours would keep only
+    the busier one — say so in the report rather than trusting it.
+    """
+    import numpy as np
+
+    off = 255 - rgb                                 # how far from the page, per channel
+    depth = off.max(axis=2)
+    on = depth >= 255 - ink_level                   # as far off as the old test asked
+    if not on.any():
+        return on
+    shade = np.round(off[on] / depth[on][:, None] * COLOUR_STEPS).astype(np.int32)
+    code = (shade[:, 0] * (COLOUR_STEPS + 1) + shade[:, 1]) * (COLOUR_STEPS + 1) + shade[:, 2]
+    counts = np.bincount(code)
+    whole = np.zeros(rgb.shape[:2], np.int32)
+    whole[on] = code
+    least = max(min_len, rgb.shape[1] // WIRE_RUN)
+    best, ink = -1, None
+    for key in np.argsort(counts)[::-1][:6]:
+        if counts[key] < on.sum() * 0.02:
+            break
+        only = on & (whole == key)
+        score = _long_ink(only, least)
+        if score > best:
+            best, ink = score, only
+    return ink if ink is not None else on
+
+
 def raster_segments(path: Path, min_len: int | None = None, max_width: int = 5,
                     ink_level: int = 170) -> tuple[list[Seg], list[Dot]]:
     """Long thin runs of dark ink: what a wire looks like, and text does not.
@@ -345,11 +408,7 @@ def raster_segments(path: Path, min_len: int | None = None, max_width: int = 5,
         rgb = np.asarray(im.convert("RGB")).astype(np.int16)
     if min_len is None:
         min_len = max(5, round(rgb.shape[1] / PAGE_UNIT))
-    # ink is dark and colourless. A thin wire comes out grey once the page has been
-    # scaled, so the level is generous; what keeps a symbol out is its colour, since
-    # Parasit draws wires in black and everything else in blue
-    hi, lo = rgb.max(axis=2), rgb.min(axis=2)
-    dark = (hi <= ink_level) & (hi - lo <= 60)
+    dark = wire_ink(rgb, min_len, ink_level)
     segs: list[Seg] = []
     for axis in (0, 1):                          # 0: rows → horizontal runs, 1: columns
         m = dark if axis == 0 else dark.T

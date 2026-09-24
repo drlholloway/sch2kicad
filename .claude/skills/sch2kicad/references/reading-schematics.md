@@ -215,6 +215,12 @@ dark red off-page connectors. Clean to read, and the pin numbers printed beside
 every IC pin are the chip's real ones, so a quad op-amp's 1/2/3, 5/6/7, 8/9/10,
 12/13/14 with 4 and 11 confirm the order rather than assume it. Watch for:
 
+- **Coloured wires.** 22359 draws wires in green, symbols in red and text in
+  black. The tracer picks the wire colour out of the page itself, so the check
+  works — but **a sheet like this is where pin positions go unchecked while you
+  are reading it**, and 22359's were: the first thing the colour-picking did was
+  show that most of its pins sit ten or twenty pixels off the ink. Read the
+  coordinates off pixel dumps, not off arithmetic on a zoomed crop.
 - **Off-page connectors** — a letter in a circle (`A`, `B1`, `B2`, `B3`) at each
   end of a link the drawer did not want to route. They are ordinary named nets,
   not board pads, so do not make them `ports`. **The crosscheck will report each

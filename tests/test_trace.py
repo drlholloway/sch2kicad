@@ -136,3 +136,43 @@ def test_a_rail_name_goes_to_the_wire_it_is_written_against(tmp_path):
     rep = crosscheck_circuit(c)
     assert not any("GND" in m and "Power" in m for m in rep.merges), rep.text()
     assert rep.misnamed == [], rep.text()
+
+
+def _source(tmp_path, name: str):
+    """Ingest a sample and hand back its upright page, as pixels and as a path."""
+    from sch2kicad.ingest import ingest
+    src = SAMPLES / name
+    if not src.exists():
+        pytest.skip(f"{name} is third-party and not in the repo")
+    ingest(src, tmp_path / "work")
+    import numpy
+    from PIL import Image
+    page = tmp_path / "work" / "source.png"
+    with Image.open(page) as im:
+        return numpy.asarray(im.convert("RGB")).astype(numpy.int16), page
+
+
+def test_the_wire_colour_is_read_from_the_drawing(tmp_path):
+    """22359 draws its wires green, its symbols red and its text black. The older
+    test — dark and colourless — kept the text, dropped the wires it needed and
+    traced 4 of its 78 pins, because a saturated green's darkest channel is bright."""
+    from sch2kicad.trace import raster_segments, wire_ink
+    rgb, page = _source(tmp_path, "22359.png")
+    ink = wire_ink(rgb, max(5, round(rgb.shape[1] / 320)))
+    assert ink[118, 340], "the green rail is not ink"       # (68, 193, 151)
+    assert not ink[611, 1069], "a red symbol is ink"        # (215, 66, 66)
+    assert not ink[358, 622], "black text is ink"           # (0, 0, 0)
+    # and the sheet's own output bus comes back whole, which is what tells the
+    # difference: with the wires invisible the longest run left is a letter
+    segs, _ = raster_segments(page)
+    assert max(s.length() for s in segs) >= 500, "the output bus was not traced"
+
+
+def test_a_page_drawn_in_one_colour_keeps_all_of_it(tmp_path):
+    """Escobedo draws in black on white. Picking a colour has to pick that one, or
+    every sheet that worked before this stops working."""
+    from sch2kicad.trace import wire_ink
+    rgb, _page = _source(tmp_path, "wobbletron_1.gif")
+    ink = wire_ink(rgb, 5)
+    was = (rgb.max(axis=2) <= 170) & (rgb.max(axis=2) - rgb.min(axis=2) <= 60)
+    assert ink.sum() == was.sum() and (ink == was).all()

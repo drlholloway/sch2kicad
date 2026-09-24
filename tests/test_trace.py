@@ -176,3 +176,86 @@ def test_a_page_drawn_in_one_colour_keeps_all_of_it(tmp_path):
     ink = wire_ink(rgb, 5)
     was = (rgb.max(axis=2) <= 170) & (rgb.max(axis=2) - rgb.min(axis=2) <= 60)
     assert ink.sum() == was.sum() and (ink == was).all()
+
+
+def test_the_octave_fuzz_agrees_with_its_drawing(tmp_path):
+    """22359 is the sheet the wire-colour change was written for, and the first
+    thing it showed was that this reading's own pin positions were a median 18 px
+    off the ink. They are read off the green now — the sheet draws symbols in red
+    and wires in green, so a pin sits where the green stops — and every pin lands
+    on the conductor the reading says it should."""
+    c = _ready(tmp_path, "22359.png", "octave-fuzz-22359.circuit.json")
+    rep = crosscheck_circuit(c)
+    assert rep.unmatched == [], rep.text()
+    assert rep.checked == 78, rep.text()
+    # the one thing left is a label the drawing really does write nearer the wrong
+    # wire: OCTAVE-1's ground flag is a red stem with 8 px of green at the far end,
+    # so its name lands 18 px above R7 and 26 px below its own wire
+    assert {m.split(" are one thing")[0] for m in rep.merges} == {"GND, OCT2_TOP"}, rep.text()
+    assert rep.splits == [], rep.text()
+
+
+def test_a_junction_dot_does_not_swallow_the_wire_through_it(tmp_path):
+    """A dot is wider than the wire it sits on, so its own short rows lie squarely
+    under the wire's long ones. Stacking runs that merely sit inside each other let
+    the dot carry the wire's group down row after row until it was too thick to be
+    a line — and 22359's 135 px feed into IC1D pin 12 was thrown away entire."""
+    from sch2kicad.trace import raster_segments
+    _rgb, page = _source(tmp_path, "22359.png")
+    segs, _ = raster_segments(page)
+    feed = [s for s in segs if abs(s.a[1] - 211) <= 2 and s.length() > 100]
+    assert feed, "the wire under the junction dots was not traced"
+
+
+def test_a_line_that_falls_between_two_pixels_is_still_ink(tmp_path):
+    """Thin lines are drawn with anti-aliasing, so one that lands between two pixel
+    centres puts half its ink in each. On 22359 that is the difference between a
+    wire reading 165 deep and the same wire, a third of a pixel over, reading 64
+    and 76 — under any single bar, though together they carry a whole line."""
+    from sch2kicad.trace import raster_segments
+    _rgb, page = _source(tmp_path, "22359.png")
+    segs, _ = raster_segments(page)
+    # R10's foot to IC1D pin 13: a 94 px drop at x=763 that no pixel of makes the bar
+    drop = [s for s in segs if abs(s.a[0] - 763.5) <= 2 and s.length() > 80]
+    assert drop, "the wire split between two columns was not traced"
+
+
+def test_a_part_drawn_in_two_places_is_two_bodies(tmp_path):
+    """22359 draws the 4040's supply pins over in its power block, a third of a page
+    from the chip. Taken as one body those pins span half the drawing and everything
+    inside the rectangle reads as the chip's own ink: it cost 30% of the sheet's wire
+    and two thirds of its pins."""
+    from sch2kicad.trace import drop_bodies, page_unit, raster_segments
+    c = _ready(tmp_path, "22359.png", "octave-fuzz-22359.circuit.json")
+    page = tmp_path / "work" / "source.png"
+    segs, _ = raster_segments(page)
+    kept = drop_bodies(list(segs), c, touch=page_unit(page))
+    before = sum(s.length() for s in segs)
+    assert sum(s.length() for s in kept) >= 0.9 * before, "a part's own span ate the page"
+
+
+def test_a_short_wire_is_better_than_no_wire_at_all(tmp_path):
+    """A sheet that draws its symbols in their own colour leaves nothing of them in
+    the wire ink, so what is left between two symbols is the hop alone: 22359's pot
+    reaches its resistor in 16 px and its ground flag in 8. Refusing a conductor
+    that short loses the pin, and sends the flag's name to whatever passes nearby."""
+    c = _ready(tmp_path, "22359.png", "octave-fuzz-22359.circuit.json")
+    rep = crosscheck_circuit(c)
+    for pin in ("OCTAVE+1.2", "R12.1", "OCTAVE-1.1", "IC1C.8"):
+        assert rep.pins[pin][1] is not None, f"{pin} lost its wire\n{rep.text()}"
+
+
+def test_a_junction_dot_drawn_in_colour_is_found(tmp_path):
+    """Ingest looked for dots by brightness, and a saturated green works out at 163
+    of 255 — bare paper. 22359 came through with no dots at all, so every crossing
+    the sheet marks as a join was read as a crossing."""
+    from PIL import Image
+    from sch2kicad.ingest import find_dots
+    src = SAMPLES / "22359.png"
+    if not src.exists():
+        pytest.skip("22359.png is third-party and not in the repo")
+    with Image.open(src) as im:
+        dots = find_dots(im)
+    assert dots, "a sheet drawn in colour came through with no junction dots"
+    # the one that joins R4's foot to the wire down to C2: without it SQ is two nets
+    assert any(abs(d["x"] - 648) <= 3 and abs(d["y"] - 529) <= 3 for d in dots), dots

@@ -51,6 +51,7 @@ BEHIND_PENALTY = 5.0   # px: how much further a wire may be, to be one that leav
 BODY_REACH = 2.0       # how far past its own pins a symbol's ink reaches, in page units
 PAGE_UNIT = 320        # the smallest thing a page can say: one part in this many of its width
 MIN_NET = 3.0          # a conductor worth matching a pin to, in those units
+BODY_GAP = 80          # pins further apart than this, in those units, are drawn apart
 COLOUR_STEPS = 6       # how finely two colours are told apart, per channel
 WIRE_RUN = 20          # only a wire runs this share of the page in a straight line
 
@@ -154,15 +155,21 @@ class Conductors:
 
         A pixel reading gives the odd stray mark — a letter's crossbar, a stub of
         a symbol — so a conductor with nothing to it is passed over for the wire a
-        little further off. ``out`` is the way the pin's lead leaves its part, and
-        the wire is looked for that way: the other plate of a capacitor is as close
-        to the pin as its own, and belongs to the other net.
+        little further off. Passed over, not refused: where the short conductor is
+        the only one a pin has, it is the answer. A sheet that draws its symbols in
+        their own colour leaves nothing of them in the wire ink, so what is left
+        between two of them is the hop alone — on 22359 a pot's wiper reaches its
+        resistor in sixteen pixels and its ground flag in eight, and refusing those
+        loses the pin and, worse, sends the flag's name to whatever longer wire
+        happens to pass nearby.
+
+        ``out`` is the way the pin's lead leaves its part, and the wire is looked
+        for that way: the other plate of a capacitor is as close to the pin as its
+        own, and belongs to the other net.
         """
         lengths = self.net_length()
         best: tuple[float, float, int] | None = None
         for i, s in enumerate(self.segs):
-            if lengths[self.find(i)] < min_len:
-                continue
             q = _nearest_on(p, s)
             d = math.dist(p, q)
             if d > tol:
@@ -171,6 +178,8 @@ class Conductors:
             # it is still its wire — but one that leaves the part is the better answer
             behind = out is not None and (q[0] - p[0]) * out[0] + (q[1] - p[1]) * out[1] <= 0
             score = d + (BEHIND_PENALTY if behind else 0.0)
+            if lengths[self.find(i)] < min_len:
+                score += tol                        # last, behind anything else in reach
             if best is None or score < best[0]:
                 best = (score, d, i)
         return self.find(best[2]) if best else None
@@ -254,32 +263,58 @@ def drop_bodies(segs: list[Seg], circuit, touch: float = 2.0, min_len: float = 1
 
     Dropping and cutting can only split a net that should be whole; neither can
     join two that should be apart. That is what makes this safe to do at all.
+
+    A part is judged one place at a time, because a sheet may draw it in more
+    than one: 22359 puts the 4040's supply pins over in its power block, a third
+    of a page from the chip. Taken together those pins span half the drawing, and
+    everything inside that rectangle would be read as the chip's own ink. Pins
+    that sit together are one drawing of the part and have a body between them;
+    pins off on their own are another, and the empty page between the two is
+    nobody's body.
     """
     for part in circuit.parts:
         pts = [pin.at for pin in part.pins.values() if pin.at]
         pts += [at for at in part.supply_at.values() if at]
         if len(pts) < 2:
             continue
-        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
-        span = (min(xs), min(ys), max(xs), max(ys))
-        near = _grow(span, BODY_REACH * touch)
-        out = []
-        for s in segs:
-            if (max(s.a[0], s.b[0]) < near[0] or min(s.a[0], s.b[0]) > near[2]
-                    or max(s.a[1], s.b[1]) < near[1] or min(s.a[1], s.b[1]) > near[3]):
-                out.append(s)                       # not this part's business
-                continue
-            on = sorted((_param(s, p) for p in pts if _dist_to_seg(p, s) <= touch))
-            if len(on) >= 2:
-                out += _except(s, (on[0], on[-1]))          # its body, between its pins
-            elif on:
-                out.append(s)                               # a lead runs through its pin
-            elif _in_box(s.a, near) and _in_box(s.b, near):
-                continue                                    # an outline, drawn round it
-            else:
-                out += _except(s, _inside_span(s, _grow(span, touch)))
-        segs = [s for s in out if s.length() >= min_len]
+        for group in _drawn_apart(pts, BODY_GAP * touch):
+            if len(group) < 2:
+                continue                            # a lone stub draws no body
+            xs, ys = [p[0] for p in group], [p[1] for p in group]
+            span = (min(xs), min(ys), max(xs), max(ys))
+            near = _grow(span, BODY_REACH * touch)
+            out = []
+            for s in segs:
+                if (max(s.a[0], s.b[0]) < near[0] or min(s.a[0], s.b[0]) > near[2]
+                        or max(s.a[1], s.b[1]) < near[1] or min(s.a[1], s.b[1]) > near[3]):
+                    out.append(s)                   # not this part's business
+                    continue
+                on = sorted((_param(s, p) for p in group if _dist_to_seg(p, s) <= touch))
+                if len(on) >= 2:
+                    out += _except(s, (on[0], on[-1]))      # its body, between its pins
+                elif on:
+                    out.append(s)                           # a lead runs through its pin
+                elif _in_box(s.a, near) and _in_box(s.b, near):
+                    continue                                # an outline, drawn round it
+                else:
+                    out += _except(s, _inside_span(s, _grow(span, touch)))
+            segs = [s for s in out if s.length() >= min_len]
     return segs
+
+
+def _drawn_apart(pts: list[Point], gap: float) -> list[list[Point]]:
+    """Split a part's pins into the places the sheet draws it, by single linkage."""
+    left, out = list(pts), []
+    while left:
+        group, more = [left.pop()], True
+        while more:
+            more = False
+            for i in range(len(left) - 1, -1, -1):
+                if any(math.dist(left[i], p) <= gap for p in group):
+                    group.append(left.pop(i))
+                    more = True
+        out.append(group)
+    return out
 
 
 def pin_points(circuit) -> list[Point]:
@@ -367,12 +402,25 @@ def wire_ink(rgb, min_len: int, ink_level: int = 170):
     A page drawn in one colour picks that colour, which is what every sheet before
     22359 did anyway. A page that draws its wires in two colours would keep only
     the busier one — say so in the report rather than trusting it.
+
+    How far off the page a line stands is read across the pair it may be split
+    over. A line thinner than a pixel that falls between two of them puts half its
+    ink in each, so neither is as dark as the bar though together they carry a
+    whole line's worth; on 22359 that is the difference between a wire at 165 and
+    the same wire, drawn a third of a pixel over, at 64 and 76.
     """
     import numpy as np
 
     off = 255 - rgb                                 # how far from the page, per channel
     depth = off.max(axis=2)
-    on = depth >= 255 - ink_level                   # as far off as the old test asked
+    bar = 255 - ink_level
+    beside = np.zeros_like(depth)                   # the deepest of the four neighbours
+    beside[:, :-1] = np.maximum(beside[:, :-1], depth[:, 1:])
+    beside[:, 1:] = np.maximum(beside[:, 1:], depth[:, :-1])
+    beside[:-1, :] = np.maximum(beside[:-1, :], depth[1:, :])
+    beside[1:, :] = np.maximum(beside[1:, :], depth[:-1, :])
+    # its own share has to be real, so blank paper beside a wire is still paper
+    on = (depth >= bar / 2) & (depth + beside >= bar)
     if not on.any():
         return on
     shade = np.round(off[on] / depth[on][:, None] * COLOUR_STEPS).astype(np.int32)
@@ -425,7 +473,15 @@ def raster_segments(path: Path, min_len: int | None = None, max_width: int = 5,
 
 
 def _group_runs(runs: dict[int, list[tuple[int, int]]], axis: int, max_width: int) -> list[Seg]:
-    """Stack runs that overlap on neighbouring lines: one line of ink, one segment."""
+    """Stack runs that overlap on neighbouring lines: one line of ink, one segment.
+
+    Two runs are the same line when they largely coincide — not when one merely
+    sits inside the other. A junction dot is wider than the wire through it, so
+    its own short rows lie squarely under the wire's long ones; measuring the
+    overlap against the shorter run alone would let the dot go on carrying the
+    wire's group downwards until the stack looked too thick to be a line, and the
+    wire were thrown away with it.
+    """
     groups: list[list[tuple[int, int, int]]] = []       # (line, start, end)
     open_groups: list[list[tuple[int, int, int]]] = []
     for line in sorted(runs):
@@ -434,7 +490,8 @@ def _group_runs(runs: dict[int, list[tuple[int, int]]], axis: int, max_width: in
             hit = None
             for g in open_groups:
                 gl, gs, ge = g[-1]
-                if gl == line - 1 and min(end, ge) - max(start, gs) >= 0.6 * (end - start):
+                share = 0.6 * max(end - start, ge - gs)
+                if gl == line - 1 and min(end, ge) - max(start, gs) >= share:
                     hit = g
                     break
             if hit is None:

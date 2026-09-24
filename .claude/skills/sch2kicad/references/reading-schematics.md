@@ -221,6 +221,21 @@ every IC pin are the chip's real ones, so a quad op-amp's 1/2/3, 5/6/7, 8/9/10,
   are reading it**, and 22359's were: the first thing the colour-picking did was
   show that most of its pins sit ten or twenty pixels off the ink. Read the
   coordinates off pixel dumps, not off arithmetic on a zoomed crop.
+- **On a two-colour sheet a pin sits where the green stops and the red starts.**
+  The symbol draws its own leads in the symbol colour, so the wire ink begins
+  exactly at the pin — which makes these sheets the easiest of all to place
+  precisely, once you look at the right thing. Dump the wire mask and the rest of
+  the ink as two characters and read the boundary off it. Two consequences worth
+  expecting: the conductors are *short*, because only the hop between two symbols
+  is wire at all (a pot reaches its resistor in 16 px and its ground flag in 8);
+  and a rail flag's stem is mostly symbol, so **the flag's name can sit nearer a
+  passing wire than its own**. 22359 has one of those and it is genuinely
+  ambiguous — OCTAVE-1's `GND` is 18 px above R7's wire and 26 px below its own.
+  Check such a warning by eye and record it rather than moving a pin to silence it.
+- **Sanity-check a position against the sheet's own geometry.** A KiCad sheet
+  repeats itself: on 22359 every resistor body is 72 px, every capacitor 55, and
+  every XOR gate 101 px from input to output. A pin that breaks the pattern is
+  misread.
 - **Off-page connectors** — a letter in a circle (`A`, `B1`, `B2`, `B3`) at each
   end of a link the drawer did not want to route. They are ordinary named nets,
   not board pads, so do not make them `ports`. **The crosscheck will report each

@@ -123,6 +123,19 @@ def pdf_schematic(pdf: Path, page_no: int, out: Path) -> tuple[Image.Image, dict
 
 # ---------------------------------------------------------------- features
 
+def page_ink(img: Image.Image) -> np.ndarray:
+    """The page as depth of ink: 0 where the drawing is darkest, 255 where it is bare.
+
+    Not the same as its brightness. How far a pixel stands off the page is how far
+    it goes in whichever channel goes furthest, so a saturated green wire counts as
+    deeply as a black one; by brightness it works out at 163 of 255 and reads as
+    bare paper, which is how a sheet drawn in colour came to have no junction dots
+    at all. On anything grey this is the brightness it always was.
+    """
+    rgb = np.asarray(img.convert("RGB")).astype(np.int16)
+    return (255 - (255 - rgb).max(axis=2)).astype(np.uint8)
+
+
 def line_width(gray: np.ndarray) -> float:
     """Typical stroke width in pixels (median horizontal run of ink)."""
     ink = gray < 128
@@ -146,7 +159,7 @@ def find_dots(img: Image.Image) -> list[dict]:
     there, so thresholding the distance transform isolates dots cleanly.
     """
     import cv2
-    gray = np.array(img.convert("L"))
+    gray = page_ink(img)
     lw = line_width(gray)
     ink = (gray < 150).astype(np.uint8)
     dist = cv2.distanceTransform(ink, cv2.DIST_L2, 5)

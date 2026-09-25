@@ -277,9 +277,10 @@ every IC pin are the chip's real ones, so a quad op-amp's 1/2/3, 5/6/7, 8/9/10,
 
 **Escobedo's bigger sheets** (Phuncgnosis, Gargler) add two things the Wobbletron
 did not. **Crossings are a break in the wire being jumped**, one pixel each side,
-not an arc — so read the pixels at every crossing, and expect the drawing
-cross-check to join them anyway, since its own join tolerance is wider than the
-gap. On the Gargler that is one warning, and the pixels settle it. And **a filled
+not an arc — so read the pixels at every crossing. The cross-check reads that
+break as a crossing too, so expect no warning from one; what it needs is a wire
+long enough to be a wire on both sides of the gap, which is what stops a
+capacitor's plate between its own leads from counting as a wire hopped over. And **a filled
 symbol body is read as a junction dot by ingest**: the Phuncgnosis's LED triangles
 all came back in `dots.json`, and a dot joins whatever it sits on, so a pin placed
 within a few pixels of a filled triangle or a diode's bar gets welded to the far

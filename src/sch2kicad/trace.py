@@ -18,10 +18,13 @@ What counts as a conductor:
   no connection.
 * **Pixels** — long axis-aligned runs of ink, which is what a wire looks like and
   what text and a symbol's outline do not. Here an end touching another run's
-  middle is a real T-junction, because a raster gives no better evidence. Which
-  of the page's colours *is* the ink is read from the drawing rather than assumed
-  (``wire_ink``): only a wire runs a twentieth of the page in a straight line, so
-  that is what picks it. A page drawn in one colour picks that colour.
+  middle is a real T-junction, because a raster gives no better evidence — unless
+  the drawing has left evidence of its own, and a **break either side of the wire
+  it crosses** is exactly that (``Conductors._hops``): where two wires really
+  meet the ink is continuous, so a gap is there because somebody put it there.
+  Which of the page's colours *is* the ink is read from the drawing rather than
+  assumed (``wire_ink``): only a wire runs a twentieth of the page in a straight
+  line, so that is what picks it. A page drawn in one colour picks that colour.
 * **Neither** counts ink inside a part: the space a part's own pins span is its
   body, and a body is not a wire. Dropping it is what keeps an op-amp's inputs
   apart, and it can only split a net that should be whole — never join two that
@@ -59,6 +62,7 @@ MIN_NET = 3.0          # a conductor worth matching a pin to, in those units
 BODY_GAP = 80          # pins further apart than this, in those units, are drawn apart
 COLOUR_STEPS = 6       # how finely two colours are told apart, per channel
 WIRE_RUN = 20          # only a wire runs this share of the page in a straight line
+HOP_GAP = 3.0          # how wide the break marking a crossing can be, in page units
 
 
 @dataclass(frozen=True)
@@ -90,13 +94,65 @@ def _dist_to_seg(p: Point, s: Seg) -> float:
     return math.dist(p, _nearest_on(p, s))
 
 
+def _line(s: Seg, axis: int) -> float:
+    """Where an axis-aligned segment sits across ``axis``."""
+    return (s.a[axis] + s.b[axis]) / 2
+
+
+def _faces(a: Seg, c: Seg, axis: int, tol: float, gap: float) -> Point | None:
+    """The middle of the gap two runs on one line leave facing each other, if it is small."""
+    if abs(_line(a, 1 - axis) - _line(c, 1 - axis)) > tol:
+        return None                             # not the same line
+    a0, a1 = sorted((a.a[axis], a.b[axis]))
+    c0, c1 = sorted((c.a[axis], c.b[axis]))
+    if a1 <= c0:
+        lo, hi = a1, c0
+    elif c1 <= a0:
+        lo, hi = c1, a0
+    else:
+        return None                             # they overlap: not two ends facing
+    if not 0 < hi - lo <= gap:
+        return None
+    across = (_line(a, 1 - axis) + _line(c, 1 - axis)) / 2
+    return ((lo + hi) / 2, across) if axis == 0 else (across, (lo + hi) / 2)
+
+
+def _crosses(s: Seg, m: Point, axis: int, tol: float, wire: float) -> bool:
+    """Does ``s`` run across the gap at ``m`` — through it, rather than stopping in it?
+
+    ``wire`` is how long a run has to be to be a wire at all. A capacitor's plate
+    stands across its own two leads exactly as a jumped wire stands in the gap
+    between two stubs: through the middle of it, and past both sides. It is the
+    part's own ink, kept on purpose, since a run through one pin is a lead.
+    """
+    if s.length() < wire:                       # a plate is as long as a capacitor
+        return False
+    if abs(s.a[axis] - s.b[axis]) > tol:        # it has to lie across the broken wire
+        return False
+    if _dist_to_seg(m, s) > tol:
+        return False
+    return min(math.dist(m, s.a), math.dist(m, s.b)) > tol   # one that stops here is a T
+
+
+def _at_cell(index: dict[tuple[int, int], set[int]], p: Point, cell: float) -> set[int]:
+    """Everything indexed in the cell holding ``p``, and in the ones round it."""
+    gx, gy = int(p[0] // cell), int(p[1] // cell)
+    out: set[int] = set()
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            out |= index.get((gx + dx, gy + dy), set())
+    return out
+
+
 class Conductors:
     """Segments and dots, joined into nets."""
 
-    def __init__(self, segs: list[Seg], dots: list[Dot], t_contacts: bool, tol: float = 2.0):
+    def __init__(self, segs: list[Seg], dots: list[Dot], t_contacts: bool, tol: float = 2.0,
+                 page: float = 0.0):
         self.segs = segs
         self.dots = dots
         self.tol = tol
+        self.page = page       # the page's own smallest unit; 0 leaves crossings alone
         self._parent: dict[int, int] = {}
         self._len: dict[int, float] | None = None
         self._join(t_contacts)
@@ -124,16 +180,87 @@ class Conductors:
             for gx in range(int((x0 - tol) // cell), int((x1 + tol) // cell) + 1):
                 for gy in range(int((y0 - tol) // cell), int((y1 + tol) // cell) + 1):
                     near[(gx, gy)].add(i)
+        apart = self._hops(near, cell) if self.page else set()
         for members in near.values():
             for i in members:
                 for j in members:
-                    if i < j and self._touch(self.segs[i], self.segs[j], t_contacts):
+                    if i < j and (i, j) not in apart and self._touch(
+                            self.segs[i], self.segs[j], t_contacts):
                         self.union(i, j)
-        # a dot joins everything it sits on, crossing or not
+        # a dot joins everything it sits on, crossing or not — including a crossing
+        # the ink says is a hop, since a drawing that means both says the dot
         for d in self.dots:
             on = [i for i, s in enumerate(self.segs) if _dist_to_seg((d.x, d.y), s) <= d.r + tol]
             for i in on[1:]:
                 self.union(on[0], i)
+
+    def _hops(self, near: dict[tuple[int, int], set[int]], cell: float) -> set[tuple[int, int]]:
+        """The crossings a drawing marks by breaking the wire that is jumped.
+
+        Escobedo's sheets show a crossing as a gap: the ink of the wire being stepped
+        over stops a pixel short of the other, picks up a pixel past it, and nothing
+        joins them. The gap is narrower than the tolerance a raster needs for its
+        T-junctions, so each stub ends within reach of the wire between them and the
+        tracer welds all three — on the Gargler that put the whole signal bus on the
+        filter's own node, eight pins across two nets.
+
+        **The gap is itself the evidence.** Where two wires really meet, the ink is
+        continuous and a raster reads one run, not two: a break exists only because
+        the drawing put it there, and the one reason to break a wire is to say it does
+        not connect. So two runs on one line, facing each other across a gap no wider
+        than a wire, with a third running across the middle of it, are one wire
+        hopping over another.
+
+        Three things keep it honest, and the middle one is the whole difficulty.
+
+        The crossing has to be **centred** in the gap, which an unrelated wire passing
+        between two unrelated runs will not be.
+
+        Both wires have to **be wires**. A break is not the only thing that leaves two
+        runs facing each other on one line: dropping a part's body leaves the same
+        shape, and a capacitor's plate then stands in the gap between its own two leads
+        exactly as a jumped wire stands between two stubs — through the middle, and past
+        both sides. Reading that as a crossing welds the capacitor end to end, which is
+        the worst thing this module can do. Length is what tells them apart, measured
+        the way ``wire_ink`` measures it: only a wire runs a twentieth of the page in a
+        straight line, and a plate is as long as a capacitor. The same bar on the broken
+        wire keeps two letter strokes either side of a title-block rule from counting.
+
+        And the crossing has to **pass through** rather than stop in the gap: a wire
+        ending between the two is a T-junction. A four-way junction is drawn with a dot,
+        which joins everything it sits on whatever this decides.
+
+        Returns the pairs that must not be joined, and joins the two stubs to each
+        other, since the wire they belong to does carry on across the crossing.
+        """
+        tol, gap = self.tol, HOP_GAP * self.page
+        wire = PAGE_UNIT / WIRE_RUN * self.page      # only a wire runs this far straight
+        lines: dict[tuple[int, int], list[int]] = defaultdict(list)
+        for i, s in enumerate(self.segs):
+            for axis in (0, 1):
+                if abs(s.a[1 - axis] - s.b[1 - axis]) <= tol:       # runs along `axis`
+                    lines[(axis, int(_line(s, 1 - axis) // cell))].append(i)
+        apart: set[tuple[int, int]] = set()
+        for (axis, row), here in lines.items():
+            for i in here:
+                for j in here + lines.get((axis, row + 1), []):
+                    if j <= i:
+                        continue
+                    a, c = self.segs[i], self.segs[j]
+                    if max(a.length(), c.length()) < wire:
+                        continue            # a wire is what gets broken; this is not one
+                    m = _faces(a, c, axis, tol, gap)
+                    if m is None:
+                        continue
+                    jumped = [k for k in _at_cell(near, m, cell) if k not in (i, j)
+                              and _crosses(self.segs[k], m, axis, tol, wire)]
+                    if not jumped:
+                        continue
+                    self.union(i, j)                    # the wire carries on across
+                    for k in jumped:
+                        apart.add((min(i, k), max(i, k)))
+                        apart.add((min(j, k), max(j, k)))
+        return apart
 
     def _touch(self, s: Seg, t: Seg, t_contacts: bool) -> bool:
         tol = self.tol
@@ -245,11 +372,6 @@ def _except(s: Seg, span: tuple[float, float] | None) -> list[Seg]:
     if hi < 1:
         out.append(Seg(_at(s, hi), s.b))
     return out
-
-
-def _line(s: Seg, axis: int) -> float:
-    """Where an axis-aligned segment sits across ``axis``."""
-    return (s.a[axis] + s.b[axis]) / 2
 
 
 def _runs(s: Seg, lo: float, hi: float, axis: int, tol: float) -> bool:
@@ -844,7 +966,7 @@ def crosscheck_circuit(circuit, doc: Path | None = None) -> Crosscheck:
     meta = {}
     if (work / "ingest.json").exists():
         meta = json.loads((work / "ingest.json").read_text())
-    pin_tol, min_net, touch = 5.0, 0.0, 2.0
+    pin_tol, min_net, touch, page = 5.0, 0.0, 2.0, 0.0
     if meta.get("kind") == "vector":
         pdf = doc or Path(meta.get("pdf") or meta.get("input"))
         if not pdf.exists():
@@ -868,9 +990,12 @@ def crosscheck_circuit(circuit, doc: Path | None = None) -> Crosscheck:
         # on a big one
         touch = page_unit(image)
         pin_tol, min_net = 11.0, max(6.0, MIN_NET * touch)
+        # only a raster joins a T at all, so only a raster needs the hop rule: a
+        # vector page never takes a crossing for a contact in the first place
+        page = touch
     segs = drop_boxes(segs, circuit, touch=touch)      # a closed shape is an outline
     segs = drop_bodies(segs, circuit, touch=touch)
-    cond = Conductors(segs, dots, t_contacts=t_contacts)
+    cond = Conductors(segs, dots, t_contacts=t_contacts, page=page)
     on_pins = {r for r in (cond.net_at(at, pin_tol, min_net) for at in pin_points(circuit)) if r is not None}
     # only rails: a signal's name may be written anywhere, or read wrong off pixels,
     # and a rail is the only net whose pins the drawing joins by name alone

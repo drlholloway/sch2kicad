@@ -114,13 +114,16 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   somewhere else entirely and the page between the two is nobody's body. What
   counts as ink is read off the page as well: the wires' own colour, picked by
   which colour runs furthest in a straight line, and measured across the pair of
-  pixels a line thinner than one of them is split over. All thirteen sheets are
-  checked against their drawings, 1412 pins traced: eight agree outright, and ten
-  disagreements stand on the other five, mostly where the ink and the netlist
-  really do differ — an off-page connector drawn twice, a jack whose normalling
-  lug is joined until a plug lifts it, a crossing broken by a single pixel either
-  side, a ground flag standing nearer the wrong wire. They are recorded rather
-  than silenced by moving a pin. Planted faults — a pin moved to another net, a crossing read as
+  pixels a line thinner than one of them is split over. A crossing the drawing
+  marks by **breaking** the wire that is jumped is read as a crossing, not welded
+  into a junction: where two wires really meet the ink is continuous, so the gap
+  is evidence. All thirteen sheets are checked against their drawings, 1412 pins
+  traced: nine agree outright, and nine disagreements stand on the other four —
+  every one of them either the drawing's own doing or a wire the tracer dropped,
+  never a join it invented. An off-page connector drawn twice, a jack whose
+  normalling lug is joined until a plug lifts it, a ground flag standing nearer
+  the wrong wire, a trimmer's wiper strap too faint to trace. They are recorded
+  rather than silenced by moving a pin. Planted faults — a pin moved to another net, a crossing read as
   a junction, two rails mixed up, a resistor shorted end to end — are caught.
 - **M3 (done):** build docs end to end, with a cross-check against the doc's
   parts list — every publisher seen so far reads. PedalPCB Thunder Pipe (63 of

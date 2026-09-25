@@ -154,6 +154,60 @@ def test_a_closed_box_round_a_parts_pins_is_not_four_wires(tmp_path):
     assert rep.merges == [], rep.text()
 
 
+def test_a_crossing_broken_either_side_is_not_a_junction(tmp_path):
+    """Escobedo marks a crossing by breaking the wire that is jumped — one pixel of
+    paper each side of the one it steps over. That gap is narrower than the tolerance
+    a raster needs for its T-junctions, so both stubs end within reach of the wire
+    between them and all three get welded: the Gargler's whole signal bus came out on
+    the first filter's own node, eight pins across two nets."""
+    c = _ready(tmp_path, "gargler.gif", "gargler-escobedo.circuit.json")
+    rep = crosscheck_circuit(c)
+    assert rep.merges == [], rep.text()
+    assert rep.disagreements == 0, rep.text()
+    # the bus and the filter node it crosses are two things, and each of them is one
+    bus = {rep.pins[p][1] for p in ("C2.2", "C3.1", "C9.1", "VR1.3")}
+    node = {rep.pins[p][1] for p in ("R4.2", "C4.1", "C5.1", "R9.1")}
+    assert len(bus) == 1 and len(node) == 1 and bus != node, rep.text()
+
+
+def _wires(*segs):
+    """Conductors from bare geometry, on a page whose smallest unit is 2 px."""
+    from sch2kicad.trace import Conductors, Seg
+    return Conductors([Seg(*s) for s in segs], [], t_contacts=True, page=2.0)
+
+
+def test_a_wire_broken_either_side_of_another_hops_over_it():
+    """The two stubs are one wire and the wire between them is not on it. A junction
+    dot says otherwise, though, and it still wins: a drawing that means both says so
+    with the dot."""
+    from sch2kicad.trace import Conductors, Dot, Seg
+    cond = _wires(((100, 200), (145, 200)), ((149, 200), (200, 200)), ((147, 100), (147, 300)))
+    assert cond.find(0) == cond.find(1), "the wire does not carry on across the crossing"
+    assert cond.find(0) != cond.find(2), "the crossing was read as a junction"
+    dotted = Conductors([Seg((100, 200), (145, 200)), Seg((149, 200), (200, 200)),
+                         Seg((147, 100), (147, 300))], [Dot(147, 200, 2)],
+                        t_contacts=True, page=2.0)
+    assert dotted.find(0) == dotted.find(2), "a dot on the crossing did not join it"
+
+
+def test_a_capacitors_plate_is_not_a_wire_being_hopped():
+    """A plate stands in the gap between its own two leads exactly as a jumped wire
+    stands between two stubs — through the middle, and past both sides — and it is
+    ink the body rule keeps on purpose, since a run through one pin is a lead. Take
+    it for a crossing and the hop rule welds the capacitor end to end, which is a
+    dead board. What tells them apart is length: a plate is as long as a capacitor,
+    and only a wire runs a twentieth of the page in a straight line."""
+    cond = _wires(((100, 200), (147, 200)), ((153, 200), (200, 200)), ((150, 193), (150, 207)))
+    assert cond.find(0) != cond.find(1), "the capacitor was shorted across its own plate"
+
+
+def test_a_wire_that_stops_between_two_stubs_is_a_junction():
+    """A hop passes through. One that ends in the gap is a wire meeting a wire, and
+    breaking that join would cut a real node in three."""
+    cond = _wires(((100, 200), (145, 200)), ((149, 200), (200, 200)), ((147, 200), (147, 300)))
+    assert cond.find(0) == cond.find(1) == cond.find(2), "a T-junction was read as a hop"
+
+
 def test_a_rectangle_of_wires_is_not_an_outline():
     """Two rails with a part standing between them make a rectangle as soon as
     anything else stands between them further along, and every line of it is a wire.

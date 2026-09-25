@@ -15,7 +15,7 @@ import statistics
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from .circuit import parse_value
+from .circuit import parse_action, parse_value
 
 _REF_HEADS = {"LOCATION", "PART"}
 _HEADS = {"VALUE": "value", "TYPE": "type", "NOTES": "notes"}
@@ -229,15 +229,34 @@ def _norm(s: str) -> str:
     return re.sub(r"[\s\-_.,/]", "", s).upper()
 
 
+_POLES_RE = re.compile(r"\b(SPST|SPDT|DPDT|DPST|[1-9]P[1-9]T)\b", re.I)
+
+
+def _poles(s: str) -> str:
+    m = _POLES_RE.search(s)
+    return m.group(1).upper() if m else ""
+
+
 def _taper(v: str) -> str:
     m = _TAPER.search(v.strip())
     return (m.group(1) or m.group(2)) if m else ""
 
 
-def same_value(ptype: str, drawn: str, listed: str) -> bool | None:
+def same_value(ptype: str, drawn: str, listed: str, listed_type: str = "") -> bool | None:
     """Whether a drawn value and a listed one agree; None when they can't be compared."""
     if _norm(drawn) == _norm(listed):
         return True
+    if ptype.startswith("switch"):
+        # poles and action are the whole of a switch's value, and a publisher may
+        # write either in either column: Aion's row for the Tri-Vibe's MODE says
+        # "SPDT cntr off" under value and "Toggle switch, SPDT on-off-on" under type.
+        a, b = parse_action(drawn), parse_action(listed) or parse_action(listed_type)
+        pa, pb = _poles(drawn), _poles(listed) or _poles(listed_type)
+        if pa and pb and pa != pb:
+            return False
+        if not a or not b:
+            return None
+        return a == b
     if ptype in VALUE_TYPES:
         a, b = parse_value(drawn), parse_value(listed)
         if a is None or b is None:
@@ -288,7 +307,7 @@ def check(parts: dict[str, dict], rows: list, accept: dict[str, str] | None = No
             continue
         seen.add(ref)
         p = parts[ref]
-        ok = same_value(p.get("type", ""), p.get("value", ""), r.value)
+        ok = same_value(p.get("type", ""), p.get("value", ""), r.value, r.type)
         name = ref if ref.upper() == r.ref.upper() else f"{ref} ({r.ref} in the list)"
         if ok:
             res.matched += 1

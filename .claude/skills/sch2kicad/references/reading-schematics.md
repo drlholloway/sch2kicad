@@ -69,6 +69,16 @@ at the far end of that line, not at the body.
 - **Pots as variable resistors** (wiper tied to one end, e.g. GAIN/DRIVE in an
   op-amp's feedback) are common: two pins on one net, keep all three.
 - **Toggle switches**: the pivot dot is the common; the open circles are the throws.
+  Read its **action** too and put it in `action` — `on/on`, `on/off/on`, `on/on/on`
+  — because the netlist is identical for all three and they are different parts to
+  order. Where to find it: written by the switch (`on-on-on`, `cntr off`), in the
+  parts list (Aion puts it in the type column, "Toggle switch, SPDT on-off-on"), in
+  the notes, or **in how the drawing uses it**. A DPDT whose two poles are chained
+  so the circuit has a third setting is an `on/on/on`: a plain on/on has only two
+  positions and cannot do it. That is how the Disorder's is read — pole B picks one
+  of two signals, pole A picks that or a third, which is three settings from one
+  toggle. Left out, the build says so and stays READY, so a switch nobody marked is
+  not a blocker; a switch marked wrong is.
 - **Annotations are not nets**: `+5.20V`, `+4.50V` near a node are measured
   voltages → `texts` with `"kind": "voltage"`. `+8.72V` written over a rail is
   also an annotation (the rail is still whatever feeds it).

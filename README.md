@@ -167,6 +167,23 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   through that normaliser at all, so a join onto one depended on KiCad
   inferring a T rather than on a junction dot.
 
+- **Which switch to order (done):** a toggle's action — on/on, on/off/on,
+  on/on/on — is not in the netlist. `com`/`a`/`b` is identical for all three,
+  and they are three different parts, so nothing downstream can work out which
+  one the circuit wants and the schematic has to say it: in the value, where it
+  shows on the sheet (`DPDT on/on/on`), and in the description, where a BOM
+  reads from. Spellings fold, because a publisher writes one switch two ways in
+  one row — Aion's Tri-Vibe list says "SPDT cntr off" in the VALUE column and
+  "on-off-on" in the TYPE column — and the parts-list check reads both, so
+  stating the action canonically does not cost a match. A switch nobody marked
+  gets a note rather than a guess: a wrong action loses a setting instead of
+  killing a board, so it does not block READY the way an unknown lead order
+  does. An `on/on/on` on a single-pole switch is a problem, though, since one
+  pole cannot make three different live positions. The Disorder's DPDT is the
+  case that matters: its two poles are chained so the toggle picks one of three
+  signals, which a plain on/on cannot do, and until now the only record of that
+  was a note in `circuit.json`.
+
 ## Development
 
 ```sh

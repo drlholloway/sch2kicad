@@ -58,8 +58,8 @@ deliberately unconnected and gets a no-connect flag.
 | `opamp_quad` | `+`, `-`, `out` per unit | `unit: "A"`…`"D"`, supply on `"E"`. Drawn V+ on 4, V- on 11 — the TL074/TL084/LM324 order; a quad the table does not know says so in the report, so check the datasheet and set `lib_id` if it differs |
 | `opamp_single` | `+`, `-`, `out` | `part` must be a known symbol (TL071, LM741...) |
 | `lm386`, `ic` | pin numbers `"1"`…`"16"` | `ic` needs `lib_id` unless `part` is in the profile's `named_parts` (suffix grades match: `LM13700N` → `LM13700`). A multi-unit IC's unit is the one holding the listed pin numbers, so `unit` can keep the drawing's name (`A`, `BUF1`); the report says which KiCad unit it became. The package comes from the profile by pin count (DIP-8/14/16, SOIC for smd). A part with no KiCad symbol can come from the tool's own library (`CD4517` → `sch2kicad:CD4517`), which is copied into the built project |
-| `switch_spdt` | `com`, `a`, `b` | throws are interchangeable |
-| `switch_dpdt` | `com`, `a`, `b` per pole | `unit: "A"`/`"B"` |
+| `switch_spdt` | `com`, `a`, `b` | throws are interchangeable; set `action` |
+| `switch_dpdt` | `com`, `a`, `b` per pole | `unit: "A"`/`"B"`; set `action` |
 
 ## Part fields
 
@@ -70,6 +70,16 @@ deliberately unconnected and gets a no-connect flag.
 - `value` — exactly as printed; pots keep their taper letter (`A100K`, `B50K`, `C10K`).
 - `part` — part number for semiconductors and ICs (`2N5089`, `TL072`, `1N5817`).
 - `label` — the knob/switch function printed next to a pot or switch (`FUZZ`). Becomes the `Label` field.
+- `action` — a toggle's action: `"on/on"`, `"on/off/on"` or `"on/on/on"` (`"on/off"`
+  for an SPST). Three switches with the same lugs and the same netlist are three
+  different parts to order, and the netlist cannot carry the difference, so the
+  schematic has to: it becomes the switch's value (`DPDT on/on/on`) and its
+  description. Spellings fold, so `"on-on-on"`, `"cntr off"` and a whole parts-list
+  row (`"Toggle switch, SPDT on-off-on"`) all read. **A DPDT drawn with a third
+  live position is an `on/on/on`** — a plain on/on cannot do it. Left out, the build
+  stays READY and says the action is unmarked, so set it whenever the drawing, the
+  parts list or the notes say. `on/on/on` on a single-pole switch is a problem:
+  one pole cannot make three different live positions.
 - `pinout` — lead order pin 1→3 on the board, e.g. `"EBC"`. Only set it after the
   user settles it; it overrides the pinout table (including the E-B-C assumption for
   through-hole 2N2222/2N2907). Unknown parts without it are never READY.

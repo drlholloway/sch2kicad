@@ -121,3 +121,56 @@ def test_a_p_channel_jfet_keeps_its_own_lead_order():
     assert got.lib_id == "Device:Q_PJFET_DGS", got.lib_id
     assert "TO-92" in got.footprint, got.footprint
     assert got.problems == []
+
+
+def test_switch_actions_fold_to_one_spelling():
+    """Every way a publisher writes a toggle's action reads as the same action.
+
+    It has to be read off text, because a netlist cannot carry it: com/a/b is
+    identical for on/on, on/off/on and on/on/on, which are three different parts to
+    order. Aion writes one switch two ways in one row — "SPDT cntr off" in the value
+    column, "Toggle switch, SPDT on-off-on" in the type column — so a whole row has
+    to read as well as a bare action.
+    """
+    from sch2kicad.circuit import parse_action
+    assert parse_action("on/on/on") == "on/on/on"
+    assert parse_action("ON-ON-ON") == "on/on/on"
+    assert parse_action("3 position") == "on/on/on"
+    assert parse_action("SPDT cntr off") == "on/off/on"
+    assert parse_action("center off") == parse_action("centre off") == "on/off/on"
+    assert parse_action("Toggle switch, SPDT on-off-on") == "on/off/on"
+    assert parse_action("SPDT on/on") == "on/on"
+    # the longest spelling wins: on-on-on is not the on-on inside it
+    assert parse_action("DPDT on-on-on toggle") == "on/on/on"
+    # nothing to find
+    assert parse_action("3PDT") == parse_action('1/4" mono') == parse_action("100K") == ""
+
+
+def test_a_switch_states_its_action_and_says_so_when_it_cannot():
+    """The value on the sheet and the description name the action, or the build asks.
+
+    A wrong action does not kill a board the way a wrong pinout does — the setting
+    just isn't there — so an unmarked one is a note and stays READY. But a one-pole
+    switch cannot have three live positions, and claiming it can is a problem.
+    """
+    from sch2kicad.circuit import Part
+    from sch2kicad.parts import _switch_action
+
+    value, desc, notes, problems = _switch_action(Part(ref="SW1", type="switch_dpdt",
+                                                       action="on/on/on"), "switch_dpdt")
+    assert value == "DPDT on/on/on"
+    assert desc == "DPDT switch, on/on/on — 3 positions, no off position"
+    assert (notes, problems) == ([], [])
+
+    value, desc, notes, problems = _switch_action(Part(ref="S2", type="switch_spdt"), "switch_spdt")
+    assert (value, desc, problems) == ("SPDT", "", [])
+    assert notes == ["S2: SPDT action not marked on the drawing — confirm "
+                     "on/on vs on/off/on before ordering"]      # never on/on/on: one pole
+
+    _, _, _, problems = _switch_action(Part(ref="S2", type="switch_spdt", action="on/on/on"),
+                                       "switch_spdt")
+    assert problems and "needs two poles" in problems[0]
+
+    _, _, _, problems = _switch_action(Part(ref="S2", type="switch_spdt", action="on/maybe"),
+                                       "switch_spdt")
+    assert problems and "is not one of" in problems[0]

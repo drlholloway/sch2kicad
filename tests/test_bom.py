@@ -118,3 +118,22 @@ def test_extract_parasit_grid_with_notes_and_marks():
     assert by_ref["D1"].value == "1N4001"               # its own column, on R20's line
     reading = json.loads((SAMPLES / "circuits" / "higgs-phaser-parasit.circuit.json").read_text())
     assert reading["bom"] == bom.rows_json(rows)
+
+
+def test_a_switch_agrees_when_its_action_does():
+    """A publisher may put the action in either column, so both are read.
+
+    Aion's row for the Tri-Vibe's MODE says "SPDT cntr off" under VALUE and "Toggle
+    switch, SPDT on-off-on" under TYPE. The sheet states the action canonically, so
+    without folding the spellings the one switch on a 66-part list would stop
+    matching — an own goal, since the two say the same thing.
+    """
+    assert bom.same_value("switch_spdt", "SPDT on/off/on", "SPDT cntr off",
+                          "Toggle switch, SPDT on-off-on")
+    assert bom.same_value("switch_spdt", "SPDT on/on", "SPDT on/on", "Switch")
+    assert bom.same_value("switch_dpdt", "DPDT on/on/on", "DPDT on-on-on", "Switch")
+    # a real disagreement, either half of the value
+    assert bom.same_value("switch_dpdt", "DPDT on/on", "SPDT on/on", "Switch") is False
+    assert bom.same_value("switch_dpdt", "DPDT on/on", "DPDT on-on-on", "Switch") is False
+    # neither column says: nothing to compare, so a warning rather than a verdict
+    assert bom.same_value("switch_spdt", "SPDT", "Switch", "Switch") is None

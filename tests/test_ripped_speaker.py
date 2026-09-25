@@ -298,3 +298,29 @@ def test_an_unfamiliar_quad_says_which_supply_order_it_drew():
         res = resolve_all(from_dict(data), load_profile("tht"), SymbolResolver())
         notes = [n for r in res if r.ref == "U1" for n in r.notes]
         assert bool([n for n in notes if "V+ on 4 and V- on 11" in n]) is wanted, (part, notes)
+
+
+def test_a_three_position_dpdt_says_so_on_the_sheet(tmp_path):
+    """The Disorder's DPDT is an on-on-on, and the schematic has to be the record.
+
+    Its two poles are chained so the toggle picks one of three signals, which a plain
+    on/on DPDT cannot do — but the netlist is identical either way, six lugs and the
+    same com/a/b, so nothing downstream can tell. Ordering the wrong one loses the
+    middle setting, and the only place that can say which to buy is the sheet.
+    """
+    from sch2kicad import sexpr
+
+    disorder = HERE.parent / "samples" / "circuits" / "disorder-22358.circuit.json"
+    res = build(disorder, tmp_path / "board")
+    node = sexpr.parse((tmp_path / "board" / res.sch.name).read_text())
+    units = [s for s in sexpr.children(node, "symbol")
+             if any(p[1] == "Reference" and p[2] == "SW1" for p in sexpr.children(s, "property"))]
+    assert len(units) == 2, "both poles of SW1"
+    for u in units:
+        names = [p[1] for p in sexpr.children(u, "property")]
+        props = {p[1]: p[2] for p in sexpr.children(u, "property")}
+        assert props["Value"] == "DPDT on/on/on"
+        assert props["Description"] == "DPDT switch, on/on/on — 3 positions, no off position"
+        # ours replaces the library's rather than standing beside it: KiCad reads two
+        # properties of one name as a broken symbol
+        assert names.count("Description") == 1, names

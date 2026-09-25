@@ -34,6 +34,7 @@ class Part:
     part: str = ""               # part number for semiconductors / ICs
     unit: str = ""               # "A", "B", ... for multi-unit parts; "" otherwise
     label: str = ""              # knob / switch function (FUZZ, TONE, ...)
+    action: str = ""             # a toggle's action: on/on, on/off/on, on/on/on
     pinout: str = ""             # explicit lead order, e.g. "EBC" — confirmed by the user
     footprint: str = ""          # explicit override
     lib_id: str = ""             # explicit override
@@ -185,6 +186,7 @@ def from_dict(data: dict) -> Circuit:
         parts.append(Part(
             ref=str(p["ref"]), type=str(p["type"]), value=str(p.get("value", "")),
             part=str(p.get("part", "")), unit=str(p.get("unit", "")), label=str(p.get("label", "")),
+            action=_action_of(p),
             pinout=str(p.get("pinout", "")).upper(), footprint=str(p.get("footprint", "")),
             lib_id=str(p.get("lib_id", "")), pins=pins,
             supply={k: str(v.net) for k, v in supply.items()},
@@ -213,6 +215,52 @@ def from_dict(data: dict) -> Circuit:
 
 _MULT = {"p": 1e-12, "n": 1e-9, "u": 1e-6, "µ": 1e-6, "m": 1e-3, "k": 1e3, "K": 1e3,
          "M": 1e6, "G": 1e9, "r": 1.0, "R": 1.0, "": 1.0}
+
+
+# A toggle's action: how many positions it has, and whether the middle one is
+# off. It is not in the netlist — a com/a/b netlist is the same for all three —
+# so the only record is what the drawing or the parts list writes, and the three
+# are different parts to order. Publishers spell them every way there is: Aion
+# writes "SPDT cntr off" in the value column and "on-off-on" in the type column
+# of the same row, so every spelling folds to one.
+SWITCH_ACTIONS = ("on/on", "on/off/on", "on/on/on", "on/off")   # on/off is the SPST
+_ACTION_SPELLINGS = {
+    "onon": "on/on", "2position": "on/on",
+    "ononon": "on/on/on", "3position": "on/on/on",
+    "onoffon": "on/off/on", "cntroff": "on/off/on", "ctroff": "on/off/on",
+    "centeroff": "on/off/on", "centreoff": "on/off/on",
+    "onoff": "on/off",
+}
+
+
+def parse_action(text: str) -> str:
+    """The switch action named anywhere in a string, canonically spelt, else "".
+
+    Reads a whole parts-list row as happily as a bare action, so "Toggle switch,
+    SPDT on-off-on" and "cntr off" both come back "on/off/on". Longest spelling
+    wins, so "on-on-on" is not read as the "on-on" inside it.
+    """
+    s = re.sub(r"[\s\-_./,()]", "", text).lower()
+    for spelling in sorted(_ACTION_SPELLINGS, key=len, reverse=True):
+        if spelling in s:
+            return _ACTION_SPELLINGS[spelling]
+    return ""
+
+
+def _action_of(p: dict) -> str:
+    """A part's switch action, canonical where it can be read, raw where it can't.
+
+    An unreadable spelling is kept rather than dropped, so the build can say it
+    does not know it instead of quietly shipping a switch with no action. A sheet
+    read before ``action`` existed wrote it into the value ("SPDT on/on"), so a
+    switch falls back to whatever its value names.
+    """
+    raw = str(p.get("action", "")).strip()
+    if raw:
+        return parse_action(raw) or raw
+    if str(p.get("type", "")).startswith("switch"):
+        return parse_action(str(p.get("value", "")))
+    return ""
 
 
 def parse_value(v: str) -> float | None:

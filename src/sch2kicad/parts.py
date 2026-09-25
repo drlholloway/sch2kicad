@@ -13,7 +13,7 @@ from dataclasses import dataclass, field, replace
 from importlib import resources
 from pathlib import Path
 
-from .circuit import Circuit, Part, parse_value
+from .circuit import SWITCH_ACTIONS, Circuit, Part, parse_value
 from .symlib import LibSymbol, SymbolResolver
 
 # ------------------------------------------------------------------ part types
@@ -28,6 +28,21 @@ TRANSISTORS = BJTS | FETS
 OPAMPS = {"opamp_dual", "opamp_single", "opamp_quad"}
 SWITCHES = {"switch_spdt", "switch_dpdt"}
 KNOWN_TYPES = TWO_TERMINAL | POLAR_TWO | DIODES | POTS | TRANSISTORS | OPAMPS | SWITCHES | {"lm386", "ic"}
+
+# What a switch's action means to whoever orders and wires the part. The netlist
+# cannot carry it — com/a/b is identical for all three — so the schematic has to
+# say it: in the value, where it shows on the sheet, and in the description,
+# which is where a BOM reads from.
+_ACTION_TYPES = SWITCHES | {"switch_spst"}
+_ACTION_POSITIONS = {
+    "on/on": "2 positions", "on/off": "2 positions",
+    "on/on/on": "3 positions, no off position",
+    "on/off/on": "3 positions, centre off",
+}
+# An on-on-on needs two poles: with one pole and no off position, two of its
+# three positions would be the same connection.
+_ACTION_NEEDS_POLES = {"on/on/on": 2}
+_POLES = {"switch_spst": 1, "switch_spdt": 1, "switch_dpdt": 2}
 
 # Semantic pin names each type accepts, with synonyms folded to one spelling.
 _SYNONYMS = {
@@ -177,6 +192,33 @@ def lookup_pinout(ptype: str, part_number: str) -> tuple[str | None, str | None]
 def pinout_assumption(ptype: str, part_number: str) -> str | None:
     """Why a pinout is only assumed (the part also ships in another order), else None."""
     return _lookup(ptype, part_number)[2]
+
+
+def _switch_action(part: Part, ptype: str) -> tuple[str, str, list[str], list[str]]:
+    """A switch's value and description from its action, with what could not be settled.
+
+    Three switches with the same six lugs and the same netlist are three different
+    parts to order, and nothing downstream can work out which one the circuit
+    wants, so an unmarked action is said out loud rather than left to whoever
+    builds the board.
+    """
+    poles, npoles, action = ptype.split("_", 1)[1].upper(), _POLES.get(ptype, 1), part.action
+    if action and action not in SWITCH_ACTIONS:
+        return part.value or poles, "", [], [
+            f"{part.ref}: action {action!r} is not one of {', '.join(SWITCH_ACTIONS)}"]
+    if _ACTION_NEEDS_POLES.get(action, 1) > npoles:
+        return part.value or poles, "", [], [
+            f"{part.ref}: an {action} switch needs two poles and {poles} has one — "
+            f"a single pole cannot make three different live positions"]
+    if not action:
+        if ptype not in SWITCHES:      # an SPST is on/off and there is nothing to choose
+            return part.value or poles, "", [], []
+        choices = " vs ".join(a for a in SWITCH_ACTIONS
+                              if a != "on/off" and _ACTION_NEEDS_POLES.get(a, 1) <= npoles)
+        return part.value or poles, "", [
+            f"{part.ref}: {poles} action not marked on the drawing — confirm "
+            f"{choices} before ordering"], []
+    return (f"{poles} {action}", f"{poles} switch, {action} — {_ACTION_POSITIONS[action]}", [], [])
 
 
 # ------------------------------------------------------------------ resolution
@@ -362,6 +404,12 @@ class PartResolver:
         fields = dict(part.fields)
         if part.label:
             fields["Label"] = part.label
+        if ptype in _ACTION_TYPES:
+            value, desc, n2, p2 = _switch_action(part, ptype)
+            if desc:
+                fields.setdefault("Description", desc)
+            notes += n2
+            problems += p2
         res = Resolved(part=part, lib_id=lib_id, symbol=sym, unit=unit, footprint=footprint,
                        value=value, fields=fields, pinmap=pinmap, swappable=swappable,
                        pinout=pinout, notes=notes, problems=problems)

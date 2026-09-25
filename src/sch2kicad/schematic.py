@@ -93,12 +93,17 @@ class SchematicWriter:
         # the text reads horizontally on screen whatever the symbol's rotation
         text_angle = 90 if s.orient.angle in (90, 270) else 0
         lib_props = dict(s.lib.props)
+        # a field of the same name replaces the standard one rather than being added
+        # beside it: KiCad takes two properties with one name as a broken symbol.
+        standard = ("Reference", "Value", "Footprint", "Datasheet", "Description")
         props: list[tuple[str, str]] = [("Reference", s.ref), ("Value", s.value),
                                         ("Footprint", s.footprint),
                                         ("Datasheet", lib_props.get("Datasheet", "")),
-                                        ("Description", lib_props.get("Description", ""))]
+                                        ("Description", s.fields.get("Description")
+                                         or lib_props.get("Description", ""))]
         for k, v in s.fields.items():
-            props.append((k, v))
+            if k not in standard:
+                props.append((k, v))
         for name, val in props:
             pos = s.field_pos.get(name, s.at)
             hide = name in s.hidden_fields or name in ("Footprint", "Datasheet", "Description") \

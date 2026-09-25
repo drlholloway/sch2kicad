@@ -179,7 +179,12 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   gets a note rather than a guess: a wrong action loses a setting instead of
   killing a board, so it does not block READY the way an unknown lead order
   does. An `on/on/on` on a single-pole switch is a problem, though, since one
-  pole cannot make three different live positions. The Disorder's DPDT is the
+  pole cannot make three different live positions. Every toggle in the samples
+  states one now — the last three were settled by reading the sheets rather
+  than by assuming, and two of them could have taken a centre-off for a third
+  voice, which is a change to the circuit and so was the owner's call, not the
+  converter's. The one switch left unmarked is the synthetic DPDT fixture,
+  which keeps that path exercised. The Disorder's DPDT is the
   case that matters: its two poles are chained so the toggle picks one of three
   signals, which a plain on/on cannot do, and until now the only record of that
   was a note in `circuit.json`.

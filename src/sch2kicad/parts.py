@@ -27,7 +27,11 @@ FETS = {"njfet", "pjfet", "nmos", "pmos"}
 TRANSISTORS = BJTS | FETS
 OPAMPS = {"opamp_dual", "opamp_single", "opamp_quad"}
 SWITCHES = {"switch_spdt", "switch_dpdt"}
-KNOWN_TYPES = TWO_TERMINAL | POLAR_TWO | DIODES | POTS | TRANSISTORS | OPAMPS | SWITCHES | {"lm386", "ic"}
+# Rotaries are switches but not toggles: they have no on/on-style action, and
+# their throws are an order the shaft turns through rather than a pair.
+ROTARIES = {"switch_2p3t"}
+KNOWN_TYPES = (TWO_TERMINAL | POLAR_TWO | DIODES | POTS | TRANSISTORS | OPAMPS | SWITCHES
+               | ROTARIES | {"lm386", "ic"})
 
 # What a switch's action means to whoever orders and wires the part. The netlist
 # cannot carry it — com/a/b is identical for all three — so the schematic has to
@@ -52,6 +56,7 @@ _SYNONYMS = {
     "opamp": {"+": "+", "-": "-", "out": "out", "o": "out", "in+": "+", "in-": "-",
               "v+": "V+", "v-": "V-", "vcc": "V+", "vee": "V-", "gnd": "V-"},
     "spdt": {"com": "com", "c": "com", "common": "com", "a": "a", "b": "b", "1": "a", "3": "b", "2": "com"},
+    "rotary": {"com": "com", "common": "com", "pole": "com", "1": "1", "2": "2", "3": "3"},
 }
 
 # Stock fallbacks for types a profile does not name.
@@ -105,6 +110,8 @@ def canonical_pin(ptype: str, name: str) -> str:
         return _SYNONYMS["opamp"].get(low, n)
     if ptype == "switch_spdt":
         return _SYNONYMS["spdt"].get(low, n)
+    if ptype in ROTARIES:
+        return _SYNONYMS["rotary"].get(low, n)
     return n
 
 
@@ -526,6 +533,17 @@ class PartResolver:
                     "out": outs[0] if outs else by_name.get("~", "")}
             if "V+" in sem or "V-" in sem:
                 problems.append(f"{part.key}: put op-amp power pins in \"supply\", not \"pins\"")
+        elif ptype in ROTARIES:
+            need({"com", "1", "2", "3"})
+            ends = sorted(unit_pins, key=lambda p: p.number)
+            com = [p.number for p in ends if p.x < 0]
+            throws = [p.number for p in ends if p.number not in com]
+            if len(com) == 1 and len(throws) == 3:
+                # not swappable, unlike a toggle's throws: 1, 2, 3 are the order
+                # the shaft turns through, and swapping two reverses the sweep
+                pmap = {"com": com[0], "1": throws[0], "2": throws[1], "3": throws[2]}
+            else:
+                problems.append(f"{part.key}: could not tell the rotary's common from its throws")
         elif ptype == "switch_spdt":
             need({"com", "a", "b"})
             ends = sorted((p for p in unit_pins), key=lambda p: p.number)

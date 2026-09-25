@@ -25,6 +25,7 @@ opamp_quad = "2025_PedalDivision_ICs:TH_Op_amp_Quad"   # V+ on 4, V- on 11 (TL07
 lm386 = "2025_PedalDivision_ICs:TH_LM386"
 switch_spdt = "2025_PedalDivision_Switches:SPDT_Toggle_Sw"
 switch_dpdt = "2025_PedalDivision_Switches:DPDT_Toggle_Sw"
+switch_2p3t = "2025_PedalDivision_Switches:SW_Rotary_2x3"   # the 16mm mini rotary, on the 2P4T body
 
 # The pinout the house symbol above is wired for. A part with a different
 # lead order gets the stock KiCad symbol for its order instead, on the same

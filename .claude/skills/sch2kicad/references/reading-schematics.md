@@ -79,6 +79,11 @@ at the far end of that line, not at the body.
   of two signals, pole A picks that or a third, which is three settings from one
   toggle. Left out, the build says so and stays READY, so a switch nobody marked is
   not a blocker; a switch marked wrong is.
+- **Rotary switches** (`switch_2p3t`): one pole per `unit`, `com` plus `1`/`2`/`3` in the
+  order the shaft turns. Read the wiper's pivot as `com` and the throws in sweep order;
+  a throw with no wire on it is `"NC"`, not a tidy-up onto the nearest bus. The Gargler
+  is the worked example: its two poles are chained so the three positions give filter 1,
+  both, filter 2.
 - **Annotations are not nets**: `+5.20V`, `+4.50V` near a node are measured
   voltages → `texts` with `"kind": "voltage"`. `+8.72V` written over a rail is
   also an annotation (the rail is still whatever feeds it).

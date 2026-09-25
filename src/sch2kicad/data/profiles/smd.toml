@@ -28,6 +28,7 @@ opamp_quad = "2025_PedalDivision_ICs:SMD_Op_amp_Quad"   # V+ on 4, V- on 11 (TL0
 lm386 = "2025_PedalDivision_ICs:TH_LM386"
 switch_spdt = "2025_PedalDivision_Switches:SPDT_Toggle_Sw"
 switch_dpdt = "2025_PedalDivision_Switches:DPDT_Toggle_Sw"
+switch_2p3t = "2025_PedalDivision_Switches:SW_Rotary_2x3"   # the 16mm mini rotary, on the 2P4T body
 
 # SOT-23 lead order is fixed by the package, not by the TO-92 part named on
 # the source schematic; the report asks you to confirm the SMD substitute.

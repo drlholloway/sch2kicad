@@ -267,8 +267,13 @@ def test_a_wire_the_pin_stands_on_is_not_behind_it(tmp_path):
     net. But a wire running *through* a pin has its nearest point at the pin itself,
     so the dot product there is exactly zero — and reading zero as behind charged the
     Gargler's R11.1 the full penalty for standing on its own wire. It took the wire
-    of the net 4 px away instead, welding the switch's B pole to the output."""
+    of the net 4 px away instead, welding the switch's B pole to the output.
+
+    The other end of that wire used to be a pad, SWB, and is the real switch's common
+    now. That makes the check a stronger one than it was: the cross-check only gives
+    the outward hint to a part's pins, never to a port, so both ends of this net now
+    go through the rule that had the bug."""
     c = _ready(tmp_path, "gargler.gif", "gargler-escobedo.circuit.json")
     rep = crosscheck_circuit(c)
-    assert rep.pins["R11.1"][1] == rep.pins["port:SWB"][1], rep.text()
+    assert rep.pins["R11.1"][1] == rep.pins["SW1B.com"][1], rep.text()
     assert [m for m in rep.merges if "SW_B" in m] == [], rep.text()

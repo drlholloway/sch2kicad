@@ -324,3 +324,28 @@ def test_a_three_position_dpdt_says_so_on_the_sheet(tmp_path):
         # ours replaces the library's rather than standing beside it: KiCad reads two
         # properties of one name as a broken symbol
         assert names.count("Description") == 1, names
+
+
+def test_a_rotary_pole_keeps_its_throws_in_the_order_the_shaft_turns():
+    """The Gargler's 2P3T, which had been three bare pads with the wiring in a note.
+
+    A rotary is not a toggle: its throws are the order the shaft sweeps through, so
+    unlike an SPDT's a and b they are not interchangeable, and swapping two would
+    reverse the sweep without changing a net. The two throws the drawing leaves
+    dangling stay NC rather than being tidied onto the bus.
+    """
+    from sch2kicad.circuit import load
+    from sch2kicad.parts import load_profile, resolve_all
+
+    gargler = HERE.parent / "samples" / "circuits" / "gargler-escobedo.circuit.json"
+    res = resolve_all(load(gargler), load_profile("tht"), SymbolResolver())
+    poles = {r.part.unit: r for r in res if r.ref == "SW1"}
+    assert set(poles) == {"A", "B"}
+    for unit, pole in poles.items():
+        assert pole.problems == [], pole.problems
+        assert pole.footprint == "2025_PedalDivision_Switches:2P4T.MINI"
+        assert pole.pinmap == {"com": unit, "1": f"{unit}1", "2": f"{unit}2", "3": f"{unit}3"}
+        assert pole.swappable == [], "a rotary's throws are an order, not a pair"
+    # A-down and B-up go nowhere on the sheet
+    assert poles["A"].part.pins["3"].net is None
+    assert poles["B"].part.pins["1"].net is None

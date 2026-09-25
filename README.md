@@ -112,7 +112,7 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   page as well: the wires' own colour, picked by which colour runs furthest in a
   straight line, and measured across the pair of pixels a line thinner than one
   of them is split over. All thirteen sheets are checked against their drawings,
-  1409 pins traced: eight agree outright, and eleven disagreements stand on the
+  1412 pins traced: eight agree outright, and eleven disagreements stand on the
   other five, mostly where the ink and the netlist really do differ — an
   off-page connector drawn twice, a switch whose own box joins its terminals, a
   jack whose normalling lug is joined until a plug lifts it, a ground flag
@@ -183,6 +183,23 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   case that matters: its two poles are chained so the toggle picks one of three
   signals, which a plain on/on cannot do, and until now the only record of that
   was a note in `circuit.json`.
+
+- **The rotary the sheet draws (done):** a 2P3T is a part now, not three pads
+  with the wiring in a note. `switch_2p3t` takes one pole per unit — `com` plus
+  `1`, `2`, `3` in the order the shaft turns, so unlike a toggle's throws they
+  are **not** interchangeable, and a throw the drawing leaves dangling stays
+  `NC` instead of being tidied onto the nearest bus. It lands on the house
+  `2P4T.MINI` footprint, which keeps all ten holes on purpose: the position
+  count on these switches is set by a stop ring, not by the contacts, so the
+  part has ten pins whether the circuit uses the fourth position or not and an
+  eight-hole footprint would not accept it. The Gargler was the case — its two
+  poles are chained to give filter 1, both, filter 2 — and converting it took
+  the cross-check from 97 to 100 of its 103 pins, because the switch's own eight
+  terminals are now read off the ink rather than left off the sheet. One lesson
+  from drawing the symbol: the sheets put a three-position rotary's wiper level
+  with the **middle** throw, and a symbol that agrees puts the part where the
+  drawing puts it. Getting that wrong left a pin with no room to route and cost
+  a net label; fixing the fidelity fixed the layout, with no pin moved.
 
 ## Development
 

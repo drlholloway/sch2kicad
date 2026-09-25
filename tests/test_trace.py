@@ -368,3 +368,61 @@ def test_a_wire_the_pin_stands_on_is_not_behind_it(tmp_path):
     rep = crosscheck_circuit(c)
     assert rep.pins["R11.1"][1] == rep.pins["SW1B.com"][1], rep.text()
     assert [m for m in rep.merges if "SW_B" in m] == [], rep.text()
+
+
+def test_a_run_that_stops_just_past_a_wire_has_met_it(tmp_path):
+    """The Theremin draws both of its four-way junctions with a dot, and both dots sit
+    inside a part's reach — one a stroke under R3, the other a stroke under the 4013 —
+    so the body rule eats the dot's own ink as an outline and leaves a bare crossing.
+    What is left says the rest: the wire coming up stops 3.3 px past the one it meets,
+    and 3.5 px past the other, because the raster grows its run to the far rim of the
+    dot. A tracer that joins within 2 px read both as crossings, and split the
+    trimmer's node and the VCO's output each into two."""
+    c = _ready(tmp_path, "Theremin-Fuzz-doc.pdf", "theremin-fuzz-parasit.circuit.json", page=8)
+    rep = crosscheck_circuit(c, doc=SAMPLES / "Theremin-Fuzz-doc.pdf")
+    trimmer = {rep.pins[p][1] for p in ("R3.2", "TRIM1.2", "TRIM1.3", "U1B.4")}
+    vco = {rep.pins[p][1] for p in ("R12.2", "U2A.3", "SW1.1", "U3.4")}
+    assert None not in trimmer and len(trimmer) == 1, rep.text()
+    assert None not in vco and len(vco) == 1, rep.text()
+    assert rep.merges == [], rep.text()
+    assert rep.disagreements == 0, rep.text()
+
+
+def _page(page, *segs):
+    """Conductors from bare geometry, on a page of a given smallest unit."""
+    from sch2kicad.trace import Conductors, Seg
+    return Conductors([Seg(*s) for s in segs], [], t_contacts=True, page=page)
+
+
+def test_a_run_that_stops_short_of_a_wire_has_not_met_it():
+    """The whole rule is that the ink crossed the line it stands on. A run that stops
+    the same distance short has not touched the wire, however near it comes."""
+    past = _page(6.0, ((100, 200), (300, 200)), ((200, 197), (200, 300)))
+    assert past.find(0) == past.find(1), "a run stopping 3 px past the wire did not meet it"
+    short = _page(6.0, ((100, 200), (300, 200)), ((200, 203), (200, 300)))
+    assert short.find(0) != short.find(1), "a run stopping 3 px short of the wire was joined"
+    flat = _page(0.0, ((100, 200), (300, 200)), ((200, 197), (200, 300)))
+    assert flat.find(0) != flat.find(1), "a vector page took a crossing for a contact"
+
+
+def test_a_capacitor_is_not_shorted_across_the_gap_its_body_left():
+    """Cutting a part's body out leaves its two leads facing each other on one line,
+    and on the RedMuffin that gap is 5 px on a page whose runs may stop 7 past a wire
+    they meet. Two runs on one line never cross each other's line, which is what keeps
+    this rule out of that gap — and out of the one a hop is drawn with."""
+    cap = _page(10.0, ((100, 300), (177, 300)), ((182, 300), (381, 300)))
+    assert cap.find(0) != cap.find(1), "the capacitor was shorted across its own body"
+
+
+def test_a_hop_is_still_a_hop_where_a_run_may_stop_past_a_wire():
+    """The two rules read the same shape from opposite sides, so they have to agree:
+    a break either side of a crossing is a hop even when the break is narrower than
+    the distance a run may stop past a wire it has met."""
+    from sch2kicad.trace import Conductors, Dot, Seg
+    hop = _page(6.0, ((0, 200), (144, 200)), ((150, 200), (300, 200)), ((147, 50), (147, 350)))
+    assert hop.find(0) == hop.find(1), "the wire does not carry on across the crossing"
+    assert hop.find(0) != hop.find(2), "the crossing was read as a junction"
+    dotted = Conductors([Seg((0, 200), (144, 200)), Seg((150, 200), (300, 200)),
+                         Seg((147, 50), (147, 350))], [Dot(147, 200, 2)],
+                        t_contacts=True, page=6.0)
+    assert dotted.find(0) == dotted.find(2), "a dot on the crossing did not join it"

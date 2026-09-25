@@ -134,7 +134,13 @@ read tiles slowly at 4-6x, pin numbers matter. Their newer sheets are drawn in
 KiCad (the Higgs, 2024), and those render cleanly enough that `dots.json` is
 worth having — on the Higgs it found all 40 junctions and nothing else, so it
 is a real check on a reading: list the dots, account for every one, and be sure
-no junction you drew is missing from the list. A dangling wire end shows as a
+no junction you drew is missing from the list. **Their older sheets defeat it**:
+the Theremin's dots are 6 px across where the detector wants 7, so it reports
+one dot on the whole page and the list tells you nothing. Check the count before
+you lean on it — one dot on a dense sheet means look at the pixels instead. The
+cross-check needs no help there: a run that stops just past the wire it crosses
+has met it, which is how those junctions read whether or not the dot is found.
+A dangling wire end shows as a
 small open square (an unconnected output; `"NC"` in `circuit.json`). Two kinds
 of net marker: octagons (`IN`, `OUT`, `+9V`, `VA` — a crossed
 octagon is a rail) and arrows with a name beside a pin (`INPUT`, `GND`,

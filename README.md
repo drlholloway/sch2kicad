@@ -117,12 +117,15 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   pixels a line thinner than one of them is split over. A crossing the drawing
   marks by **breaking** the wire that is jumped is read as a crossing, not welded
   into a junction: where two wires really meet the ink is continuous, so the gap
-  is evidence. All thirteen sheets are checked against their drawings, 1412 pins
-  traced: nine agree outright, and nine disagreements stand on the other four —
-  every one of them either the drawing's own doing or a wire the tracer dropped,
-  never a join it invented. An off-page connector drawn twice, a jack whose
+  is evidence. A run that **stops just past** the wire it crosses is the same
+  evidence read the other way — at a real crossing nothing ends, so ink carried a
+  stroke or two beyond has been drawn to the far rim of a junction dot. All
+  thirteen sheets are checked against their drawings, 1412 pins traced: ten
+  agree outright, and seven disagreements stand on the other three — every one of
+  them either the drawing's own doing or a wire the tracer dropped, never a join
+  it invented. An off-page connector drawn twice, a jack whose
   normalling lug is joined until a plug lifts it, a ground flag standing nearer
-  the wrong wire, a trimmer's wiper strap too faint to trace. They are recorded
+  the wrong wire. They are recorded
   rather than silenced by moving a pin. Planted faults — a pin moved to another net, a crossing read as
   a junction, two rails mixed up, a resistor shorted end to end — are caught.
 - **M3 (done):** build docs end to end, with a cross-check against the doc's

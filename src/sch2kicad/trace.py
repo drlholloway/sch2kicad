@@ -22,6 +22,12 @@ What counts as a conductor:
   the drawing has left evidence of its own, and a **break either side of the wire
   it crosses** is exactly that (``Conductors._hops``): where two wires really
   meet the ink is continuous, so a gap is there because somebody put it there.
+  The other way round, a run that **stops just past** the wire it crosses has met
+  it (``Conductors._stops_past``): at a real crossing nothing ends, and ink that
+  carries a stroke or two beyond has been drawn to the far rim of a junction dot.
+  Crossing the line is the whole of that rule — two runs facing each other on one
+  line never cross it, which is what keeps it out of a hop's gap and out of the
+  one a part's body left behind.
   Which of the page's colours *is* the ink is read from the drawing rather than
   assumed (``wire_ink``): only a wire runs a twentieth of the page in a straight
   line, so that is what picks it. A page drawn in one colour picks that colour.
@@ -63,6 +69,7 @@ BODY_GAP = 80          # pins further apart than this, in those units, are drawn
 COLOUR_STEPS = 6       # how finely two colours are told apart, per channel
 WIRE_RUN = 20          # only a wire runs this share of the page in a straight line
 HOP_GAP = 3.0          # how wide the break marking a crossing can be, in page units
+PAST_END = 0.75        # how far past a wire a run may stop and still have met it
 
 
 @dataclass(frozen=True)
@@ -97,6 +104,14 @@ def _dist_to_seg(p: Point, s: Seg) -> float:
 def _line(s: Seg, axis: int) -> float:
     """Where an axis-aligned segment sits across ``axis``."""
     return (s.a[axis] + s.b[axis]) / 2
+
+
+def _side(p: Point, s: Seg) -> float:
+    """Which side of the line through ``s`` the point ``p`` falls on, in pixels."""
+    (ax, ay), (bx, by) = s.a, s.b
+    dx, dy = bx - ax, by - ay
+    n = math.hypot(dx, dy)
+    return ((p[0] - ax) * dy - (p[1] - ay) * dx) / n if n else 0.0
 
 
 def _faces(a: Seg, c: Seg, axis: int, tol: float, gap: float) -> Point | None:
@@ -153,6 +168,7 @@ class Conductors:
         self.dots = dots
         self.tol = tol
         self.page = page       # the page's own smallest unit; 0 leaves crossings alone
+        self.past = PAST_END * page     # how far past a wire a run may stop and still have met it
         self._parent: dict[int, int] = {}
         self._len: dict[int, float] | None = None
         self._join(t_contacts)
@@ -170,15 +186,17 @@ class Conductors:
         self._parent[self.find(i)] = self.find(j)
 
     def _join(self, t_contacts: bool) -> None:
-        tol = self.tol
-        cell = max(tol * 2, 4.0)
+        # the index has to reach as far as the furthest thing that joins, or a pair is
+        # kept apart by where a cell boundary happens to fall rather than by a rule
+        reach = max(self.tol, self.past)
+        cell = max(reach * 2, 4.0)
         near: dict[tuple[int, int], set[int]] = defaultdict(set)
         for i, s in enumerate(self.segs):
             self.find(i)
             x0, x1 = sorted((s.a[0], s.b[0]))
             y0, y1 = sorted((s.a[1], s.b[1]))
-            for gx in range(int((x0 - tol) // cell), int((x1 + tol) // cell) + 1):
-                for gy in range(int((y0 - tol) // cell), int((y1 + tol) // cell) + 1):
+            for gx in range(int((x0 - reach) // cell), int((x1 + reach) // cell) + 1):
+                for gy in range(int((y0 - reach) // cell), int((y1 + reach) // cell) + 1):
                     near[(gx, gy)].add(i)
         apart = self._hops(near, cell) if self.page else set()
         for members in near.values():
@@ -190,7 +208,8 @@ class Conductors:
         # a dot joins everything it sits on, crossing or not — including a crossing
         # the ink says is a hop, since a drawing that means both says the dot
         for d in self.dots:
-            on = [i for i, s in enumerate(self.segs) if _dist_to_seg((d.x, d.y), s) <= d.r + tol]
+            on = [i for i, s in enumerate(self.segs)
+                  if _dist_to_seg((d.x, d.y), s) <= d.r + self.tol]
             for i in on[1:]:
                 self.union(on[0], i)
 
@@ -262,6 +281,25 @@ class Conductors:
                         apart.add((min(j, k), max(j, k)))
         return apart
 
+    def _stops_past(self, s: Seg, t: Seg) -> bool:
+        """Does a run of ``s`` stop just past ``t``, having crossed the line it stands on?
+
+        Where a wire crosses another and carries on, nothing ends. Where it stops a
+        stroke or two beyond, the drawing has put a junction dot there: the dot is
+        fatter than the wire, so the raster grows the run to the dot's far rim and
+        the run ends a dot's radius past the wire it meets. The Theremin draws both
+        of its four-way junctions that way, and the two ends land 3.3 and 3.5 px
+        past a wire the tracer will only join within 2.
+
+        Crossing the line is the whole guard. A run that stops *short* of another has
+        not touched it, however near it comes, and that gap is the one the hop rule
+        reads: a wire broken either side of the one it jumps stays on its own side of
+        that wire's line, so nothing here sees it.
+        """
+        if _side(s.a, t) * _side(s.b, t) >= 0:      # it stays on one side: it never reached
+            return False
+        return any(_dist_to_seg(p, t) <= self.past for p in (s.a, s.b))
+
     def _touch(self, s: Seg, t: Seg, t_contacts: bool) -> bool:
         tol = self.tol
         for p in (s.a, s.b):
@@ -270,8 +308,10 @@ class Conductors:
                     return True
         if not t_contacts:
             return False
-        return (any(_dist_to_seg(p, t) <= tol for p in (s.a, s.b))
-                or any(_dist_to_seg(q, s) <= tol for q in (t.a, t.b)))
+        if (any(_dist_to_seg(p, t) <= tol for p in (s.a, s.b))
+                or any(_dist_to_seg(q, s) <= tol for q in (t.a, t.b))):
+            return True
+        return bool(self.past) and (self._stops_past(s, t) or self._stops_past(t, s))
 
     # ............................................................. lookup
     def net_length(self) -> dict[int, float]:

@@ -106,18 +106,21 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   part's own ink is not a conductor: an outline is dropped, and a body a run of
   pixels goes straight through is cut out from between the two pins it joins —
   which is what lets the check work on a hand-drawn sheet, where every part is a
-  hollow shape whose boundary touches both its leads. A part is judged one place
-  at a time, since a sheet may draw its supply pins somewhere else entirely and
-  the page between the two is nobody's body. What counts as ink is read off the
-  page as well: the wires' own colour, picked by which colour runs furthest in a
-  straight line, and measured across the pair of pixels a line thinner than one
-  of them is split over. All thirteen sheets are checked against their drawings,
-  1412 pins traced: eight agree outright, and eleven disagreements stand on the
-  other five, mostly where the ink and the netlist really do differ — an
-  off-page connector drawn twice, a switch whose own box joins its terminals, a
-  jack whose normalling lug is joined until a plug lifts it, a ground flag
-  standing nearer the wrong wire. They are recorded rather than silenced by
-  moving a pin. Planted faults — a pin moved to another net, a crossing read as
+  hollow shape whose boundary touches both its leads. A part drawn *round* its
+  terminals is known by its shape rather than by any measure of reach: four runs
+  of ink closing a rectangle with the pins inside are an outline, and dropping
+  them is what keeps a switch's own box from joining everything it encloses. A
+  part is judged one place at a time, since a sheet may draw its supply pins
+  somewhere else entirely and the page between the two is nobody's body. What
+  counts as ink is read off the page as well: the wires' own colour, picked by
+  which colour runs furthest in a straight line, and measured across the pair of
+  pixels a line thinner than one of them is split over. All thirteen sheets are
+  checked against their drawings, 1412 pins traced: eight agree outright, and ten
+  disagreements stand on the other five, mostly where the ink and the netlist
+  really do differ — an off-page connector drawn twice, a jack whose normalling
+  lug is joined until a plug lifts it, a crossing broken by a single pixel either
+  side, a ground flag standing nearer the wrong wire. They are recorded rather
+  than silenced by moving a pin. Planted faults — a pin moved to another net, a crossing read as
   a junction, two rails mixed up, a resistor shorted end to end — are caught.
 - **M3 (done):** build docs end to end, with a cross-check against the doc's
   parts list — every publisher seen so far reads. PedalPCB Thunder Pipe (63 of

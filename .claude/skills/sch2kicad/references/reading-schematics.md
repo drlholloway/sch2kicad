@@ -258,9 +258,10 @@ every IC pin are the chip's real ones, so a quad op-amp's 1/2/3, 5/6/7, 8/9/10,
   drawing really does keep them apart, and the name is what joins them. Expect one
   per connector and say so.
 - **Switches drawn as thick boxes** with the terminals *inside* the outline. The
-  box is wider than the space its pins span, so tracing walks round it and reports
-  every pole as one thing. Widening what counts as a body far enough to cover it
-  costs real pins elsewhere, so this one stays a known warning.
+  box stands wider than the space its pins span, so nothing that measures how far
+  a body reaches will cover it — the crosscheck recognises the closed rectangle
+  instead and drops its four sides, so put the terminals where the drawing puts
+  them and expect no warning.
 - **The same rail written two ways** — a power port `VR` in one half of the sheet
   and a plain label `Vref` in the other, or a `Power`/`Ground` global label where
   the rest of the sheet uses a triangle. Ask, then make it one net and note it.

@@ -33,7 +33,11 @@ What counts as a conductor:
   fixed count of pixels is exactly what gets it right on a 3000 px build doc and
   wrong on a 460 px hand-drawn GIF, where a resistor's outline stands 3 px off
   its own lead and a tracer that walks it joins the two nets the part is there
-  to keep apart.
+  to keep apart. A part drawn *round* its terminals is the other way about, and
+  no measure of reach finds it: the shape itself has to be recognised. Four runs
+  of ink closing a rectangle with the pins inside are an outline (``drop_boxes``)
+  — which is what a vector page gets for nothing, a path that comes back to where
+  it started being known for a shape before anything else looks at it.
 
 A junction dot joins whatever it sits on, crossing or not.
 """
@@ -44,6 +48,7 @@ import json
 import math
 from collections import defaultdict
 from dataclasses import dataclass, field
+from itertools import combinations
 from pathlib import Path
 
 Point = tuple[float, float]
@@ -240,6 +245,78 @@ def _except(s: Seg, span: tuple[float, float] | None) -> list[Seg]:
     if hi < 1:
         out.append(Seg(_at(s, hi), s.b))
     return out
+
+
+def _line(s: Seg, axis: int) -> float:
+    """Where an axis-aligned segment sits across ``axis``."""
+    return (s.a[axis] + s.b[axis]) / 2
+
+
+def _runs(s: Seg, lo: float, hi: float, axis: int, tol: float) -> bool:
+    """Does ``s`` run from ``lo`` to ``hi`` along ``axis`` — all the way, and no further?"""
+    a, b = sorted((s.a[axis], s.b[axis]))
+    return abs(a - lo) <= tol and abs(b - hi) <= tol
+
+
+def _spans(s: Seg, lo: float, hi: float, axis: int, tol: float) -> bool:
+    return min(s.a[axis], s.b[axis]) <= lo + tol and max(s.a[axis], s.b[axis]) >= hi - tol
+
+
+def _box_round(segs: list[Seg], pins, touch: float) -> list[Seg]:
+    """The four runs of ink that draw a closed rectangle round ``pins``, if they are there.
+
+    Each side has to run the whole way between its two corners **and stop there**.
+    That is what makes the shape a closed one rather than four lines that happen to
+    cross: a rail passing a part runs on past the corner, and two parts standing
+    between the same two rails make a rectangle whose sides do not stop.
+    """
+    x0, y0, x1, y1 = pins
+    across = sorted((s for s in segs if abs(s.a[1] - s.b[1]) <= touch
+                     and _spans(s, x0, x1, 0, touch)), key=lambda s: _line(s, 1))
+    down = sorted((s for s in segs if abs(s.a[0] - s.b[0]) <= touch
+                   and _spans(s, y0, y1, 1, touch)), key=lambda s: _line(s, 0))
+    for top, bot in combinations(across, 2):
+        for left, right in combinations(down, 2):
+            lx, rx = _line(left, 0), _line(right, 0)
+            ty, by = _line(top, 1), _line(bot, 1)
+            if (_runs(top, lx, rx, 0, touch) and _runs(bot, lx, rx, 0, touch)
+                    and _runs(left, ty, by, 1, touch) and _runs(right, ty, by, 1, touch)):
+                return [top, bot, left, right]
+    return []
+
+
+def drop_boxes(segs: list[Seg], circuit, touch: float = 2.0) -> list[Seg]:
+    """A closed rectangle of ink round a part's own pins is its outline, not four wires.
+
+    This is the rule vector mode gets for nothing. There a path is an object, so one
+    that comes back to where it started is known for a shape and dropped before
+    anything else looks at it. A raster has no paths — only runs of ink — so the shape
+    has to be found: four runs, two across and two down, each reaching from one corner
+    to the other and stopping, with the part's pins inside.
+
+    Without it a part drawn as a box with its terminals *inside* the outline welds
+    them all together, because the sides chain one to the next round the corners. The
+    Disorder's DPDT is drawn that way, and the four sides of its two boxes made one
+    node of both poles and three separate off-page nets — which is the signature of a
+    short, and the reason a false join is the direction worth spending a pass on.
+
+    The pins have to be inside because that is what says the rectangle belongs to
+    *this* part. A chip drawn as a box with its pins sticking out needs nothing from
+    here: its pins already span its outline, so the body rule below covers it.
+    """
+    for part in circuit.parts:
+        pts = [pin.at for pin in part.pins.values() if pin.at]
+        pts += [at for at in part.supply_at.values() if at]
+        if len(pts) < 2:
+            continue
+        for group in _drawn_apart(pts, BODY_GAP * touch):
+            if len(group) < 2:
+                continue                            # a lone stub draws no box
+            xs, ys = [p[0] for p in group], [p[1] for p in group]
+            sides = _box_round(segs, (min(xs), min(ys), max(xs), max(ys)), touch)
+            if sides:
+                segs = [s for s in segs if s not in sides]
+    return segs
 
 
 def drop_bodies(segs: list[Seg], circuit, touch: float = 2.0, min_len: float = 1.0) -> list[Seg]:
@@ -791,6 +868,7 @@ def crosscheck_circuit(circuit, doc: Path | None = None) -> Crosscheck:
         # on a big one
         touch = page_unit(image)
         pin_tol, min_net = 11.0, max(6.0, MIN_NET * touch)
+    segs = drop_boxes(segs, circuit, touch=touch)      # a closed shape is an outline
     segs = drop_bodies(segs, circuit, touch=touch)
     cond = Conductors(segs, dots, t_contacts=t_contacts)
     on_pins = {r for r in (cond.net_at(at, pin_tol, min_net) for at in pin_points(circuit)) if r is not None}

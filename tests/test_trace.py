@@ -138,6 +138,43 @@ def test_a_rail_name_goes_to_the_wire_it_is_written_against(tmp_path):
     assert rep.misnamed == [], rep.text()
 
 
+def test_a_closed_box_round_a_parts_pins_is_not_four_wires(tmp_path):
+    """The Disorder draws its DPDT as two thick boxes with the terminals *inside* the
+    outline, so the four sides chain one to the next round the corners: both poles and
+    three separate off-page nets came back as one node — which is the signature a real
+    short would give. What the drawing actually joins is the one wire between the
+    poles, and that is what has to survive the outline going."""
+    c = _ready(tmp_path, "22358.png", "disorder-22358.circuit.json")
+    rep = crosscheck_circuit(c)
+    assert rep.pins["SW1A.a"][1] == rep.pins["SW1B.com"][1], rep.text()
+    # the other four terminals each leave the sheet on their own: three by a letter
+    # the tool knows nothing of, the common by the wire to C12
+    apart = [rep.pins[p][1] for p in ("SW1A.b", "SW1A.com", "SW1B.a", "SW1B.b")]
+    assert None not in apart and len(set(apart)) == 4, rep.text()
+    assert rep.merges == [], rep.text()
+
+
+def test_a_rectangle_of_wires_is_not_an_outline():
+    """Two rails with a part standing between them make a rectangle as soon as
+    anything else stands between them further along, and every line of it is a wire.
+    What tells that from a body outline is where the sides stop: a rail runs on past
+    the corner, an outline ends there. Drop it on the strength of the corners alone
+    and the cost is two whole rails."""
+    from sch2kicad.circuit import from_dict
+    from sch2kicad.trace import Seg, drop_boxes
+
+    c = from_dict({"name": "a part between two rails", "source": {"file": "synthetic"},
+                   "parts": [{"ref": "R1", "type": "resistor", "value": "10K",
+                              "pins": {"1": ["VCC", 100, 100], "2": ["GND", 100, 200]}}]})
+    rails = [Seg((50, 100), (250, 100)), Seg((50, 200), (250, 200)),   # run on past both
+             Seg((100, 100), (100, 200)), Seg((160, 100), (160, 200))]
+    assert drop_boxes(list(rails), c, touch=2.0) == rails
+    # the same four lines, each stopping where the next begins, are a box and go
+    boxed = [Seg((100, 100), (160, 100)), Seg((100, 200), (160, 200)),
+             Seg((100, 100), (100, 200)), Seg((160, 100), (160, 200))]
+    assert drop_boxes(list(boxed), c, touch=2.0) == []
+
+
 def _source(tmp_path, name: str):
     """Ingest a sample and hand back its upright page, as pixels and as a path."""
     from sch2kicad.ingest import ingest

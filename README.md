@@ -111,9 +111,14 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   the page between the two is nobody's body. What counts as ink is read off the
   page as well: the wires' own colour, picked by which colour runs furthest in a
   straight line, and measured across the pair of pixels a line thinner than one
-  of them is split over. All nine samples agree with their drawings; planted
-  faults — a pin moved to another net, a crossing read as a junction, two rails
-  mixed up, a resistor shorted end to end — are caught.
+  of them is split over. All thirteen sheets are checked against their drawings,
+  1409 pins traced: eight agree outright, and eleven disagreements stand on the
+  other five, mostly where the ink and the netlist really do differ — an
+  off-page connector drawn twice, a switch whose own box joins its terminals, a
+  jack whose normalling lug is joined until a plug lifts it, a ground flag
+  standing nearer the wrong wire. They are recorded rather than silenced by
+  moving a pin. Planted faults — a pin moved to another net, a crossing read as
+  a junction, two rails mixed up, a resistor shorted end to end — are caught.
 - **M3 (done):** build docs end to end, with a cross-check against the doc's
   parts list — every publisher seen so far reads. PedalPCB Thunder Pipe (63 of
   63 parts agree) and Red Muffin (60 of 60; 4558 power units on their own
@@ -131,7 +136,7 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   open spot that still leaves its own rails room for their flags, instead of in
   a row at the bottom of the sheet. Flags reach further and step around
   obstacles before a pin settles for a net label. Notes and voltages keep off
-  the drawing. Across the eight samples nothing overlaps anything, and the
+  the drawing. Across all thirteen sheets nothing overlaps anything, and the
   flags that used to fall back to labels are down from 13 to 5.
 - **The supply column (done):** where a source draws a chip's supply as a box a
   tenth the size of KiCad's symbol of it, a tidy drawn row lands as a staircase
@@ -150,14 +155,17 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   on an op-amp's output and the cap across it. A pin with no room of its own
   reaches for a flag the rail already has instead of settling for a net label,
   and where a pin's lead points straight into a neighbour's body, the wire may
-  turn where it stands rather than give up. **No sample falls back to a net
-  label any more: 4 to 0, and none of the nine has an ERC warning.** Two bugs
-  came out of it: a flag stub could step aside and come back on the same axis,
-  drawing one wire exactly over another — invisible on the sheet, and harmless
-  until the wires of a rail started going through the same normaliser as every
-  other net, which keeps one of the pair and left the other's end in the air;
-  and a rail's wires had never gone through that normaliser at all, so a join
-  onto one depended on KiCad inferring a T rather than on a junction dot.
+  turn where it stands rather than give up. **Net-label fallbacks went 4 to 0
+  here, and no sheet has an ERC warning.** One label has come back since, on the
+  Phuncgnosis, where Escobedo stacks three LEDs in 43 px of a 569 px sheet and
+  no arrangement of three KiCad symbols fits; the test names it, so a second one
+  is still a regression. Two bugs came out of it: a flag stub could step aside
+  and come back on the same axis, drawing one wire exactly over another —
+  invisible on the sheet, and harmless until the wires of a rail started going
+  through the same normaliser as every other net, which keeps one of the pair
+  and left the other's end in the air; and a rail's wires had never gone
+  through that normaliser at all, so a join onto one depended on KiCad
+  inferring a T rather than on a junction dot.
 
 ## Development
 

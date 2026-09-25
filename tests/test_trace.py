@@ -259,3 +259,16 @@ def test_a_junction_dot_drawn_in_colour_is_found(tmp_path):
     assert dots, "a sheet drawn in colour came through with no junction dots"
     # the one that joins R4's foot to the wire down to C2: without it SQ is two nets
     assert any(abs(d["x"] - 648) <= 3 and abs(d["y"] - 529) <= 3 for d in dots), dots
+
+
+def test_a_wire_the_pin_stands_on_is_not_behind_it(tmp_path):
+    """The outward hint passes over a conductor lying behind a pin, because a
+    capacitor's far plate is as near to the pin as its own and belongs to the other
+    net. But a wire running *through* a pin has its nearest point at the pin itself,
+    so the dot product there is exactly zero — and reading zero as behind charged the
+    Gargler's R11.1 the full penalty for standing on its own wire. It took the wire
+    of the net 4 px away instead, welding the switch's B pole to the output."""
+    c = _ready(tmp_path, "gargler.gif", "gargler-escobedo.circuit.json")
+    rep = crosscheck_circuit(c)
+    assert rep.pins["R11.1"][1] == rep.pins["port:SWB"][1], rep.text()
+    assert [m for m in rep.merges if "SW_B" in m] == [], rep.text()

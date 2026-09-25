@@ -175,8 +175,10 @@ class Conductors:
             if d > tol:
                 continue
             # a pin's own place is read to within a few pixels, so a wire just behind
-            # it is still its wire — but one that leaves the part is the better answer
-            behind = out is not None and (q[0] - p[0]) * out[0] + (q[1] - p[1]) * out[1] <= 0
+            # it is still its wire — but one that leaves the part is the better answer.
+            # Strictly behind: a conductor the pin stands on is not behind it, and the
+            # dot product is exactly zero there, since the nearest point is the pin.
+            behind = out is not None and (q[0] - p[0]) * out[0] + (q[1] - p[1]) * out[1] < 0
             score = d + (BEHIND_PENALTY if behind else 0.0)
             if lengths[self.find(i)] < min_len:
                 score += tol                        # last, behind anything else in reach

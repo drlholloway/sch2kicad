@@ -46,8 +46,11 @@ def test_vector_page_agrees_with_its_reading(tmp_path):
     rep = crosscheck_circuit(c)
     assert rep.disagreements == 0, rep.text()
     assert rep.checked >= 155, rep.text()
-    # the status LED and its resistor are on the board by choice, not in Aion's drawing
-    assert {u.split(" at ")[0] for u in rep.unmatched} == {"LED.A", "LED.K", "LEDR.1", "LEDR.2"}
+    # the status LED and its resistor are on the board by choice, not in Aion's drawing,
+    # and the check says so off the page rather than counting them as pins it could not read
+    assert [u.split(":")[0] for u in rep.undrawn] == ["LED", "LEDR"], rep.text()
+    assert rep.unmatched == [], rep.text()
+    assert rep.checked == rep.drawn, rep.text()
 
 
 def test_vector_page_catches_a_wrong_net(tmp_path):
@@ -426,3 +429,55 @@ def test_a_hop_is_still_a_hop_where_a_run_may_stop_past_a_wire():
                          Seg((147, 50), (147, 350))], [Dot(147, 200, 2)],
                         t_contacts=True, page=6.0)
     assert dotted.find(0) == dotted.find(2), "a dot on the crossing did not join it"
+
+
+def _move_part(c, ref: str, dx: float, dy: float):
+    """The same reading with one part's pins all shifted, as a misread would have them."""
+    bad = copy.deepcopy(c)
+    for p in bad.parts:
+        if p.ref == ref:
+            for pin in p.pins.values():
+                if pin.at:
+                    pin.at = (pin.at[0] + dx, pin.at[1] + dy)
+    return bad
+
+
+def test_a_part_the_drawing_does_not_draw_is_named_as_such(tmp_path):
+    """Parasit's sheet has no status LED on it: the LED and its resistor go on the board
+    because the builder wants them, not because the drawing asks. Their pins have no wire
+    to find and never will, and counting them as pins the check could not read buries the
+    ones that are the reading's own fault. Every other pin of this sheet is now traced."""
+    c = _ready(tmp_path, "Theremin-Fuzz-doc.pdf", "theremin-fuzz-parasit.circuit.json", page=8)
+    rep = crosscheck_circuit(c, doc=SAMPLES / "Theremin-Fuzz-doc.pdf")
+    assert sorted(u.split(":")[0] for u in rep.undrawn) == ["CLR", "LED"], rep.text()
+    assert rep.unmatched == [], rep.text()
+    assert rep.checked == rep.drawn == len(rep.pins) - 4, rep.text()
+    assert rep.disagreements == 0, rep.text()
+
+
+def test_a_part_read_in_the_wrong_place_is_not_excused_as_undrawn(tmp_path):
+    """The whole use of telling the two apart is that a misread part stays on the list.
+
+    R10 is drawn as a vertical resistor at x=1670; shift the reading of it 20 px sideways
+    and neither pin has a wire under it any more — the same silence an absent part makes.
+    What separates them is the drawing: R10's own ink is still inside the space its pins
+    stand in, so it is a reading to fix, not a part that is not there. Excuse it and the
+    coverage number would quietly swallow the error it exists to show.
+    """
+    c = _ready(tmp_path, "Theremin-Fuzz-doc.pdf", "theremin-fuzz-parasit.circuit.json", page=8)
+    doc = SAMPLES / "Theremin-Fuzz-doc.pdf"
+    rep = crosscheck_circuit(_move_part(c, "R10", 20, 0), doc=doc)
+    assert [u.split(":")[0] for u in rep.undrawn] == ["CLR", "LED"], rep.text()
+    assert sorted(u.split(" at ")[0] for u in rep.unmatched) == ["R10.1", "R10.2"], rep.text()
+
+
+def test_the_nearest_ink_says_where_a_misread_pin_belongs(tmp_path):
+    """A pin with no wire under it is reported with how far the nearest ink is, because
+    that is what says what to do about it: eleven pixels away is a pin to move, and the
+    drawing is where the answer comes from. Reading that number off the report is what
+    this whole sheet's coordinates were corrected from."""
+    c = _ready(tmp_path, "Theremin-Fuzz-doc.pdf", "theremin-fuzz-parasit.circuit.json", page=8)
+    rep = crosscheck_circuit(_move_part(c, "R10", 20, 0), doc=SAMPLES / "Theremin-Fuzz-doc.pdf")
+    line = next(u for u in rep.unmatched if u.startswith("R10.1"))
+    px = float(line.rpartition("nearest ink ")[2].split()[0])
+    assert 15 <= px <= 25, line      # the wire it was moved off, and no further

@@ -58,6 +58,28 @@ def _hidden(node) -> bool:
     return h is not None and str(sexpr.value(h, 1, "")) == "yes"
 
 
+def _pin_at(root, ref: str, number: str) -> tuple[float, float]:
+    """Where a numbered pin of a placed symbol lands on the sheet, in millimetres."""
+    libs = {str(s[1]): s for s in sexpr.children(sexpr.child(root, "lib_symbols") or [""], "symbol")}
+    for sym in sexpr.children(root, "symbol"):
+        props = {str(p[1]): p for p in sexpr.children(sym, "property")}
+        if str(props.get("Reference", ["", "", ""])[2]) != ref:
+            continue
+        node = libs.get(str(sexpr.value(sexpr.child(sym, "lib_id"), 1, "")))
+        if node is None:
+            continue
+        unit = int(_num(sexpr.value(sexpr.child(sym, "unit"), 1, 1), 1))
+        for pin in _parse_pins(node):
+            if pin.number != number or pin.unit not in (0, unit):
+                continue
+            at = sexpr.child(sym, "at")
+            mirror = sexpr.child(sym, "mirror")
+            m = matrix(int(_num(sexpr.value(at, 3, 0))), str(mirror[1]) if mirror else None)
+            dx, dy = apply(m, pin.x, pin.y)      # the library point is the tip itself
+            return (round(_num(at[1]) + dx, 2), round(_num(at[2]) + dy, 2))
+    raise AssertionError(f"no pin {ref}.{number} on the sheet")
+
+
 def _effects_of(node):
     eff = sexpr.child(node, "effects") or []
     font = sexpr.child(eff, "font") or []
@@ -339,11 +361,15 @@ def test_two_pins_with_no_room_share_one_flag(tmp_path):
         pytest.skip("no Theremin sample")
     root = sexpr.parse(build(theremin, tmp_path / "board").sch.read_text())
     w = _wires(root)
-    u1_11, pad = (35.56, 115.57), (30.48, 111.76)
+    # where the two sit is the placer's business and moves when a pin is read afresh,
+    # so the sheet is asked where they are rather than told
+    u1_11 = _pin_at(root, "U1", "11")
+    pad = min((p for s in w for p in s), key=lambda p: math.dist(p, u1_11) or 99)
     assert [s for s in w if u1_11 in s], "the spare inverter's ground pin is wired to nothing"
     assert [s for s in w if pad in s], "the pad's ground pin is wired to nothing"
     grounds = [s for s in sexpr.children(root, "symbol")
                if any(str(p[1]) == "Value" and str(p[2]) == "GND" for p in sexpr.children(s, "property"))]
-    near = [g for g in grounds
-            if math.dist((_num(sexpr.child(g, "at")[1]), _num(sexpr.child(g, "at")[2])), u1_11) < 12]
-    assert len(near) == 1, f"{len(near)} ground symbols where one should serve the node"
+    on_node = [g for g in grounds
+               if any(math.dist((_num(sexpr.child(g, "at")[1]), _num(sexpr.child(g, "at")[2])), p) < 5.1
+                      for s in w if u1_11 in s or pad in s for p in s)]
+    assert len(on_node) == 1, f"{len(on_node)} ground symbols where one should serve the node"

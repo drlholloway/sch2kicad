@@ -26,6 +26,25 @@ them, and so does the cross-check, which cannot tell a wrongly placed pin from
 a wrongly wired one. Where a symbol's own pin line is drawn, the wire meets it
 at the far end of that line, not at the body.
 
+**A pin is where the wire stops, and nowhere else.** Three places look right on
+a zoomed crop and are not: the **pin number** written beside the terminal (a
+whole sheet was once read that way, every IC pin landing in blank paper inside
+its own box), the **middle of the body** (a capacitor's plate gap, a resistor's
+zigzag), and a **point out along the wire** past the terminal. The last traces
+fine and still hurts — the box a part's pins span is what `drop_bodies` cuts
+out, so a pin placed beyond the terminal makes that box swallow the very wire
+that feeds the next pin along. Read the boundary off the pixels: dump the wire
+mask and the rest of the ink as two characters along the pin's own row or
+column, and the terminal is where one stops and the other starts. On a
+two-colour sheet that boundary is a colour change and is exact.
+
+**The cross-check tells you which ones are wrong.** Every pin it cannot match is
+reported with the distance to the nearest ink: a wire 11–20 px away is a pin to
+move, and the same line says which way. A part with no wire anywhere in the
+space it would stand in is reported separately, as one the drawing does not
+draw — a bypass LED the builder adds, a spare gate — and those pins come off the
+coverage count instead of sitting in it forever.
+
 ## Connections
 
 - **Dot = joined.** A junction dot joins everything that touches it.
@@ -130,7 +149,15 @@ in it.
 **Parasit Studio** — OpenOffice "Build Document" PDFs, schematic on the last
 page, embedded as a low-resolution image **rotated 90° inside the image** —
 ingest turns it upright; confirm on `grid.png`. Dense CD40xx logic at ~2000 px:
-read tiles slowly at 4-6x, pin numbers matter. Their newer sheets are drawn in
+read tiles slowly at 4-6x, pin numbers matter. **Their pin numbers are written
+outside the box, above the stub** — so the number is 30-40 px from the terminal
+it names, and a pin read at the number lands inside the chip's own box in blank
+paper. The terminal is the box edge, where the black stub meets the blue
+outline: scan the column just outside an edge and every pin's row is there in
+order, which reads a sixteen-pin chip off in one go. The same trap dressed
+differently is the wiper of a pot or trimmer — the arrow is the symbol, so the
+pin goes at the far end of the arrow's shaft where the wire begins, not at the
+arrowhead's tip on the track. Their newer sheets are drawn in
 KiCad (the Higgs, 2024), and those render cleanly enough that `dots.json` is
 worth having — on the Higgs it found all 40 junctions and nothing else, so it
 is a real check on a reading: list the dots, account for every one, and be sure

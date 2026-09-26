@@ -119,11 +119,18 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   into a junction: where two wires really meet the ink is continuous, so the gap
   is evidence. A run that **stops just past** the wire it crosses is the same
   evidence read the other way — at a real crossing nothing ends, so ink carried a
-  stroke or two beyond has been drawn to the far rim of a junction dot. All
-  thirteen sheets are checked against their drawings, 1412 pins traced: ten
-  agree outright, and seven disagreements stand on the other three — every one of
-  them either the drawing's own doing or a wire the tracer dropped, never a join
-  it invented. An off-page connector drawn twice, a jack whose
+  stroke or two beyond has been drawn to the far rim of a junction dot. A pin
+  with no wire under it is reported with **how far the nearest ink is**, because
+  that is what says what to do about it: a wire eleven pixels away is a pin to
+  move, and the drawing is where the answer comes from. Where a whole part has no
+  wire in the space it would stand in, and none anywhere near it, the drawing
+  simply does not draw that part — a status LED the builder adds, the spare gate
+  of a quad nobody used — and it is named and taken off the tally rather than
+  counted as a pin the check could not read. All thirteen sheets are checked
+  against their drawings, and **every one of the 1437 pins they draw is traced**:
+  ten agree outright, and seven disagreements stand on the other three — every one
+  of them the drawing's own doing, never a join the tracer invented. An off-page
+  connector drawn twice, a jack whose
   normalling lug is joined until a plug lifts it, a ground flag standing nearer
   the wrong wire. They are recorded
   rather than silenced by moving a pin. Planted faults — a pin moved to another net, a crossing read as

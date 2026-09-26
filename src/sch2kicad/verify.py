@@ -61,7 +61,7 @@ class Report:
         d = self.drawing
         if d is not None:
             state = "the reading agrees  OK" if not d.disagreements else f"{d.disagreements} disagree"
-            lines.append(f"  drawing:    {d.checked} of {len(d.pins)} pins traced through "
+            lines.append(f"  drawing:    {d.checked} of {d.drawn} pins traced through "
                          f"{d.traced} conductors, {state}")
         lines += sect("netlist differences", self.netlist_diffs, "problem:")
         lines += sect("ERC errors", self.erc_errors, "problem:")
@@ -79,11 +79,12 @@ class Report:
             if d.unclaimed:
                 at = ", ".join(f"({x},{y})" for x, y in d.unclaimed[:8])
                 lines += sect("wire in the drawing that nothing in the reading reaches", [at], "warning:")
+            lines += sect("parts the drawing does not draw, so nothing of them was checked",
+                          d.undrawn, "note:")
             if d.unmatched:
-                names = [u.split(" at ")[0] for u in d.unmatched]
-                shown = ", ".join(names[:10]) + (" ..." if len(names) > 10 else "")
-                lines += sect("no wire found under these pins, so nothing there was checked",
-                              [shown], "note:")
+                lines += sect("no wire found under these pins, so nothing there was checked "
+                              "(the nearest ink says where the drawing puts them)",
+                              d.unmatched[:10], "note:")
         lines += sect("ERC warnings", self.erc_warnings, "warning:")
         lines += sect("notes", self.notes, "note:")
         if self.compare:

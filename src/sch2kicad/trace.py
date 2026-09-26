@@ -49,6 +49,14 @@ What counts as a conductor:
   it started being known for a shape before anything else looks at it.
 
 A junction dot joins whatever it sits on, crossing or not.
+
+Where a pin sits is half of it. A pin belongs where the wire stops and the symbol
+starts — not where the drawing writes its *number*, and not in the middle of the
+body, both of which read plausibly on a zoomed crop and put the pin in blank
+paper. So a pin with no wire under it is reported with the distance to the nearest
+ink, which is what says what to do: eleven pixels away is a coordinate to correct,
+and the drawing holds the answer. A part with no conductor anywhere in the space
+its pins stand in is the other kind — one the sheet never drew (``_name_the_undrawn``).
 """
 
 from __future__ import annotations
@@ -314,6 +322,14 @@ class Conductors:
         return bool(self.past) and (self._stops_past(s, t) or self._stops_past(t, s))
 
     # ............................................................. lookup
+    def nearest(self, p: Point) -> float:
+        """How far the nearest conductor is from ``p``, at any distance.
+
+        What tells a pin read a few pixels off its wire from a part the drawing
+        never drew: the first has ink beside it, the second has none anywhere.
+        """
+        return min((_dist_to_seg(p, s) for s in self.segs), default=math.inf)
+
     def net_length(self) -> dict[int, float]:
         if self._len is None:
             self._len = defaultdict(float)
@@ -845,9 +861,11 @@ class Crosscheck:
     unmatched: list[str] = field(default_factory=list)
     misnamed: list[str] = field(default_factory=list)
     misplaced: list[str] = field(default_factory=list)
+    undrawn: list[str] = field(default_factory=list)
     unclaimed: list[Point] = field(default_factory=list)
     source: str = ""
     traced: int = 0
+    added: int = 0          # pins belonging to the parts in ``undrawn``
 
     @property
     def disagreements(self) -> int:
@@ -860,11 +878,17 @@ class Crosscheck:
 
     @property
     def checked(self) -> int:
-        return len(self.pins) - len(self.unmatched)
+        return len(self.pins) - len(self.unmatched) - self.added
+
+    @property
+    def drawn(self) -> int:
+        """Pins the drawing draws: a part it does not draw has no wire to trace to,
+        so it does not belong in the tally — the reading put it there on purpose."""
+        return len(self.pins) - self.added
 
     def text(self) -> str:
         lines = [f"{self.source}: {self.traced} conductors, "
-                 f"{self.checked} of {len(self.pins)} pins traced back to one"]
+                 f"{self.checked} of {self.drawn} pins traced back to one"]
         for s in self.splits:
             lines.append(f"  split:   {s}")
         for m in self.merges:
@@ -873,6 +897,8 @@ class Crosscheck:
             lines.append(f"  name:    {m}")
         for m in self.misplaced:
             lines.append(f"  place:   {m}")
+        for u in self.undrawn:
+            lines.append(f"  not drawn: {u}")
         for u in self.unmatched:
             lines.append(f"  no wire: {u}")
         if self.unclaimed:
@@ -882,6 +908,42 @@ class Crosscheck:
         lines.append("the reading agrees with the drawing" if not self.disagreements
                      else f"{self.disagreements} disagreement(s) with the drawing")
         return "\n".join(lines)
+
+
+def _name_the_undrawn(rep: Crosscheck, cond: Conductors,
+                      placed: dict[str, list[tuple[str, Point, int | None]]],
+                      pin_tol: float, reach: float) -> None:
+    """Say which parts the drawing does not draw, and take them off the tally.
+
+    A reading holds more than the sheet does: the status LED a bypass board wants,
+    the spare gate of a quad nobody used. Those pins have no wire to find and never
+    will, and counting them as untraced buries the ones that are the reading's own
+    fault — a pin put where the drawing writes the pin *number* rather than where
+    its wire ends.
+
+    What tells the two apart is the space the part stands in. Wherever a drawing
+    draws a part it draws ink there: a lead, a plate, a stub to the box. So when no
+    pin of a part is on a conductor **and** no conductor comes into the part's own
+    space at all, the part is not on the sheet. The space is the box its pins make,
+    grown by as far as a symbol's ink reaches past them (``BODY_REACH``) and by what
+    a pin's own place is worth (``pin_tol``) — the two allowances the tracer already
+    measures. A pin read a few pixels off still has its wire inside that box, so it
+    stays on the list to be fixed, which is the whole point of telling them apart.
+    """
+    for key, pins in sorted(placed.items()):
+        if any(root is not None for _, _, root in pins):
+            continue
+        xs = [at[0] for _, at, _ in pins]
+        ys = [at[1] for _, at, _ in pins]
+        space = _grow((min(xs), min(ys), max(xs), max(ys)), reach + pin_tol)
+        if any(_inside_span(s, space) for s in cond.segs):
+            continue
+        ink = min(cond.nearest(at) for _, at, _ in pins)
+        rep.undrawn.append(f"{key}: {len(pins)} pins, no wire in the space it would "
+                           f"stand in, and none within {ink:.0f} px of it")
+        rep.added += len(pins)
+        gone = {f"{key}.{name}" for name, _, _ in pins}
+        rep.unmatched = [u for u in rep.unmatched if u.split(" at ")[0] not in gone]
 
 
 def _reaches(cond: Conductors, circuit, pin: str, root: int, tol: float, min_net: float,
@@ -922,7 +984,8 @@ def _pin_at(circuit, pin: str) -> Point | None:
 
 
 def crosscheck(circuit, cond: Conductors, named: dict[int, set[str]] | None = None,
-               pin_tol: float = 5.0, min_net: float = 0.0, unclaimed_len: float = 120.0) -> Crosscheck:
+               pin_tol: float = 5.0, min_net: float = 0.0, unclaimed_len: float = 120.0,
+               reach: float = BODY_REACH * 2.0) -> Crosscheck:
     """Compare the drawing's own connectivity with the nets in ``circuit.json``.
 
     A signal net has to be one connected thing in the drawing and nothing else's. A
@@ -935,6 +998,7 @@ def crosscheck(circuit, cond: Conductors, named: dict[int, set[str]] | None = No
     by_net: dict[str, set[int | None]] = defaultdict(set)
     by_traced: dict[int, set[str]] = defaultdict(set)
     where: dict[tuple[str, int | None], list[str]] = defaultdict(list)
+    placed: dict[str, list[tuple[str, Point, int | None]]] = defaultdict(list)
     for part in circuit.parts:
         key = part.key
         drawn = [(name, pin.net, pin.at) for name, pin in part.pins.items()]
@@ -947,10 +1011,15 @@ def crosscheck(circuit, cond: Conductors, named: dict[int, set[str]] | None = No
             rep.pins[f"{key}.{name}"] = (net, root)
             by_net[net].add(root)
             where[(net, root)].append(f"{key}.{name}")
+            placed[key].append((name, at, root))
             if root is None:
-                rep.unmatched.append(f"{key}.{name} at {tuple(int(v) for v in at)}")
+                # where the nearest ink is says what to do about it: a pin with a wire
+                # a few pixels off is read in the wrong place, and the drawing says where
+                rep.unmatched.append(f"{key}.{name} at {tuple(int(v) for v in at)}"
+                                     f", nearest ink {cond.nearest(at):.0f} px away")
             else:
                 by_traced[root].add(net)
+    _name_the_undrawn(rep, cond, placed, pin_tol, reach)
     for port in circuit.ports:
         if not port.at:
             continue
@@ -1041,4 +1110,5 @@ def crosscheck_circuit(circuit, doc: Path | None = None) -> Crosscheck:
     # and a rail is the only net whose pins the drawing joins by name alone
     rails = [n for n in circuit.all_net_names() if circuit.net_kind(n) in ("power", "ground")]
     named = name_nets(cond, read_text(work), rails, on_pins)
-    return crosscheck(circuit, cond, named, pin_tol=pin_tol, min_net=min_net)
+    return crosscheck(circuit, cond, named, pin_tol=pin_tol, min_net=min_net,
+                      reach=BODY_REACH * touch)

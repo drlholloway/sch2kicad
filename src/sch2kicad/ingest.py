@@ -201,8 +201,28 @@ def find_dots(img: Image.Image) -> list[dict]:
 _TOKEN = __import__("re").compile(r"^(?:[RCQDULPJ]\d{1,3}|VR\d{1,2}|IC\d|\d+(?:\.\d+)?[pnuµmkKMR]\d*[FH]?)$")
 
 
+_WORD = __import__("re").compile(r"^[A-Za-z]{4,}$")
+TURN_MARGIN = 3.5    # how many times over a turned page must out-read the upright one
+
+
 def detect_rotation(img: Image.Image, work: Path) -> int:
-    """Clockwise degrees to turn the image so its text reads left to right."""
+    """Clockwise degrees to turn the image so its text reads left to right.
+
+    What reads is counted two ways — part labels (``R24``, ``470k``) and ordinary
+    words — because neither is safe alone. A sheet writes a label along its part,
+    so where the resistors stand upright the labels do too: the Musket reads 31
+    labels turned a quarter and 9 upright, and PedalPCB's pages already read more
+    turned than not. Words go the other way on 22359, whose only long words are
+    the ``OCTAVE`` written up the side of each pot.
+
+    What does separate them is how *little* an upright reading finds. A page that
+    really arrives on its side reads almost nothing the right way up (Parasit's
+    Higgs 3 things, the Theremin none), and seven times that or more once turned;
+    an upright sheet whose labels run sideways still reads its title, its notes
+    and every horizontal part, and at most about twice as much turned. So the page
+    is turned only when the upright reading is outnumbered well past that
+    (``TURN_MARGIN``), not merely beaten.
+    """
     exe = shutil.which("tesseract")
     if not exe:
         return 0
@@ -219,9 +239,10 @@ def detect_rotation(img: Image.Image, work: Path) -> int:
         n = 0
         for ln in r.stdout.splitlines()[1:]:
             f = ln.split("\t")
-            if len(f) >= 12 and f[11].strip() and float(f[10]) >= 70 and _TOKEN.match(f[11].strip()):
-                n += 1
-        if n > best_n * 1.5 + 2:   # only leave 0° for a clear win
+            if len(f) >= 12 and f[11].strip() and float(f[10]) >= 70:
+                word = f[11].strip()
+                n += bool(_TOKEN.match(word) or _WORD.match(word))
+        if n > best_n * TURN_MARGIN + 2:   # only leave 0° for a clear win
             best, best_n = rot, n
         if rot == 0 and n >= 25:
             break                  # plenty of upright text: no need to try the rest

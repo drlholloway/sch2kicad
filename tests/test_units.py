@@ -174,3 +174,18 @@ def test_a_switch_states_its_action_and_says_so_when_it_cannot():
     _, _, _, problems = _switch_action(Part(ref="S2", type="switch_spdt", action="on/maybe"),
                                        "switch_spdt")
     assert problems and "is not one of" in problems[0]
+
+
+def test_a_zener_lands_on_a_house_footprint():
+    """The Fix'd Fuzz brought the corpus its first zener. The profiles mapped every
+    other diode and not this one, so it fell through to KiCad's own D_Zener — which
+    carries no footprint, and a part with no footprint is not a board. It keeps that
+    symbol, so nobody fits a signal diode where it goes, on the house packages."""
+    from sch2kicad.circuit import Part
+    from sch2kicad.parts import _footprint_rule, load_profile
+    tht, smd = load_profile("tht"), load_profile("smd")
+    glass = Part(ref="D1", type="zener", value="5245", part="1N5245")      # 500 mW
+    watt = Part(ref="D2", type="zener", value="4742", part="1N4742A")      # 1 W
+    assert _footprint_rule(tht, "zener", glass) == "2025_PedalDivision_Diodes:DO-35_P7.62mm"
+    assert _footprint_rule(tht, "zener", watt) == "2025_PedalDivision_Diodes:DO-41_P7.62mm"
+    assert _footprint_rule(smd, "zener", glass) == "Diode_SMD:D_SOD-123"

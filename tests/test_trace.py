@@ -75,7 +75,11 @@ def test_vector_page_catches_two_rails_mixed_up(tmp_path):
 def test_raster_page_agrees_with_its_reading(tmp_path):
     """Parasit draw in KiCad and the page arrives as pixels: wires are the long thin
     runs of ink, and the blue a symbol is drawn in is not ink at all."""
+    import json
     c = _ready(tmp_path, "Higgs-Particle-Phaser-doc.pdf", "higgs-phaser-parasit.circuit.json", page=8)
+    # Parasit put the schematic page on its side, and the other half of the rule that
+    # keeps the Musket upright is that this one still turns
+    assert json.loads((tmp_path / "work" / "ingest.json").read_text())["rotated"] == 90
     rep = crosscheck_circuit(c)
     assert rep.disagreements == 0, rep.text()
     assert rep.checked >= 120, rep.text()
@@ -544,3 +548,67 @@ def test_a_ground_pin_read_as_the_supply_is_caught_by_its_flags_name(tmp_path):
             p.pins["2"].net = "+9V"
     rep = crosscheck_circuit(bad)
     assert any("+9V is where the drawing writes GND" in m for m in rep.misnamed), rep.text()
+
+
+def _one_part(ref: str, ptype: str, pins: dict):
+    """A circuit of one part, for geometry built by hand."""
+    from sch2kicad.circuit import from_dict
+    return from_dict({"name": "bare geometry", "source": {"file": "synthetic"},
+                      "parts": [{"ref": ref, "type": ptype, "value": "x", "pins": pins}]})
+
+
+def test_a_plate_pair_one_pixel_apart_is_still_one_body():
+    """Kelly Roberts draws a capacitor as two 5 px plates a single pixel apart, so the
+    run through it comes back in two halves, each through one pin — each "a lead", and
+    kept whole — facing each other across a gap the tracer's own join bridges. That
+    shorted every series cap on the Fix'd Fuzz. Two halves of one run, between two of
+    the part's pins, are the part's body, and are cut at the pins as one run would be."""
+    from sch2kicad.trace import Seg, drop_bodies
+    c = _one_part("C1", "capacitor", {"1": ["A", 146, 260], "2": ["B", 159, 260]})
+    kept = drop_bodies([Seg((120, 260), (151, 260)), Seg((153, 260), (190, 260))], c, touch=5.0)
+    cond = _wires(*((s.a, s.b) for s in kept))
+    assert len(kept) == 2 and cond.find(0) != cond.find(1), f"shorted across its plates: {kept}"
+    # and each pin keeps its own lead: the cut stops at the pin, not short of it
+    assert [(s.a[0], s.b[0]) for s in kept] == [(120, 146), (159, 190)], kept
+
+
+def test_a_lead_with_nothing_facing_it_close_is_kept_whole():
+    """The first version of that rule cut *every* lead back to its pin on the side
+    facing the part's middle. The Higgs reads its CD4517's pins out along the wires,
+    28 px from the box, so it cut real wire — and the end that left lined up with a
+    GND written a pixel from another net's wire, which then took the name and welded
+    the two. Only a hairline between two leads is body; two leads that stop well
+    short of each other are two wires, however far past its pin each one runs."""
+    from sch2kicad.trace import Seg, drop_bodies
+    c = _one_part("R1", "resistor", {"1": ["A", 100, 50], "2": ["B", 200, 50]})
+    leads = [Seg((50, 50), (128, 50)), Seg((180, 50), (250, 50))]     # 52 px apart
+    assert drop_bodies(list(leads), c, touch=5.0) == leads
+    # nor is a wire meeting a pin square-on, two pixels off it as a hand-read pin will
+    # be, beside a half that does face another: it runs across the part, not into it
+    c = _one_part("C1", "capacitor", {"1": ["A", 146, 260], "2": ["B", 159, 260]})
+    t = Seg((148, 200), (148, 320))
+    kept = drop_bodies([t, Seg((120, 260), (151, 260)), Seg((153, 260), (190, 260))], c, touch=5.0)
+    assert t in kept, kept
+
+
+def test_the_fixd_fuzz_agrees_with_its_drawing(tmp_path):
+    """Kelly Roberts, 2011: black on white, crossings drawn as arcs, each stage switched
+    in and out by a lever pair, and capacitors whose plates stand a pixel apart."""
+    c = _ready(tmp_path, "fixd-fuzz.png", "fixd-fuzz-roberts.circuit.json")
+    rep = crosscheck_circuit(c)
+    assert rep.disagreements == 0, rep.text()
+    assert rep.checked == rep.drawn == 128, rep.text()
+
+
+def test_the_musket_agrees_with_its_drawing_the_right_way_up(tmp_path):
+    """Blackout Effectors' Musket writes nearly every resistor and pot label up the
+    side of its part, so its labels read better turned a quarter than upright — 31
+    against 9 — and ingest turned a perfectly upright sheet on its side. Counting its
+    words as well as its labels, and asking the turned page to out-read the upright
+    one well past that, leaves it where it is."""
+    import json
+    c = _ready(tmp_path, "musket_schem-corrected.png", "musket-blackout.circuit.json")
+    assert json.loads((tmp_path / "work" / "ingest.json").read_text())["rotated"] == 0
+    rep = crosscheck_circuit(c)
+    assert rep.disagreements == 0, rep.text()
+    assert rep.checked == rep.drawn == 136, rep.text()

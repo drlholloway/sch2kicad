@@ -51,7 +51,7 @@ LM13700 = "sch2kicad:LM13700"    # bias current out of the bottom, not beside th
 CD4517 = "sch2kicad:CD4517"
 
 [[footprints]]
-type = ["diode", "schottky"]
+type = ["diode", "schottky", "zener"]          # small zeners come in SOD-123 too (MMSZ52xx)
 footprint = "Diode_SMD:D_SOD-123"
 
 [[footprints]]

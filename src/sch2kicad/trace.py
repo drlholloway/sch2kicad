@@ -514,7 +514,10 @@ def drop_bodies(segs: list[Seg], circuit, touch: float = 2.0, min_len: float = 1
       filled diode, the channel bar of a JFET, a plate pair read as one run. Cut
       the segment there; each pin keeps the wire on its own side.
     * **through one of its pins** — a lead, or a wire running up to one. Keep it
-      whole: it is the one thing a body edge never does.
+      whole: it is the one thing a body edge never does. Unless it is **half of
+      one run broken in two** — two leads of the part on one line, through two of
+      its pins, facing each other across a hairline between them — which is the
+      first case again, and cut the same way (``_halves``).
     * **nowhere near a pin, and wholly inside the part's reach** — an outline, a
       zigzag, an arc of the circle round a transistor. Drop it.
     * **anything else** — a wire that only passes by. Keep the parts of it outside
@@ -547,23 +550,63 @@ def drop_bodies(segs: list[Seg], circuit, touch: float = 2.0, min_len: float = 1
             xs, ys = [p[0] for p in group], [p[1] for p in group]
             span = (min(xs), min(ys), max(xs), max(ys))
             near = _grow(span, BODY_REACH * touch)
-            out = []
+            out, leads = [], []
             for s in segs:
                 if (max(s.a[0], s.b[0]) < near[0] or min(s.a[0], s.b[0]) > near[2]
                         or max(s.a[1], s.b[1]) < near[1] or min(s.a[1], s.b[1]) > near[3]):
                     out.append(s)                   # not this part's business
                     continue
-                on = sorted((_param(s, p) for p in group if _dist_to_seg(p, s) <= touch))
+                on = [p for p in group if _dist_to_seg(p, s) <= touch]
                 if len(on) >= 2:
-                    out += _except(s, (on[0], on[-1]))      # its body, between its pins
+                    ts = sorted(_param(s, p) for p in on)
+                    out += _except(s, (ts[0], ts[-1]))      # its body, between its pins
                 elif on:
-                    out.append(s)                           # a lead runs through its pin
+                    leads.append((len(out), s, on[0]))      # a lead runs through its pin
+                    out.append(s)
                 elif _in_box(s.a, near) and _in_box(s.b, near):
                     continue                                # an outline, drawn round it
                 else:
                     out += _except(s, _inside_span(s, _grow(span, touch)))
-            segs = [s for s in out if s.length() >= min_len]
+            halves = _halves([(s, p) for _, s, p in leads], touch)
+            pieces = {leads[i][0]: cut for i, cut in halves.items()}   # one run broken in two
+            segs = [s for i, whole in enumerate(out) for s in pieces.get(i, [whole])
+                    if s.length() >= min_len]
     return segs
+
+
+def _halves(leads: list[tuple[Seg, Point]], touch: float) -> dict[int, list[Seg]]:
+    """Which of a part's leads are one run broken in two, each cut back to its pin
+    (by position in ``leads``).
+
+    Two leads of one part on the same line, each through a different one of its
+    pins, whose inner ends face each other across less than ``touch`` *between*
+    those pins, are the part's own body read in two pieces — a plate pair, a bar —
+    and are cut at their pins as a single run through both would be. Nothing wider
+    than a hairline qualifies, so a pin read out along its wire never has that wire
+    taken for body: the gap to whatever faces it is the whole length of the part.
+    """
+    cut: dict[int, tuple[float, float]] = {}
+    for i, (s, p) in enumerate(leads):
+        for t, q in leads[i + 1:]:
+            if p == q:
+                continue
+            for axis in (0, 1):
+                other = 1 - axis
+                flat = (abs(s.a[other] - s.b[other]) < 1.0 and abs(t.a[other] - t.b[other]) < 1.0
+                        and abs(s.a[other] - t.a[other]) <= 1.5)
+                if not flat or abs(p[axis] - q[axis]) <= touch:
+                    continue
+                lo_pin, hi_pin = (p, q) if p[axis] < q[axis] else (q, p)
+                lo_seg, hi_seg = (s, t) if lo_pin is p else (t, s)
+                lo_end = max(lo_seg.a[axis], lo_seg.b[axis])     # the ends that face each other
+                hi_end = min(hi_seg.a[axis], hi_seg.b[axis])
+                if not (lo_pin[axis] < lo_end <= hi_end < hi_pin[axis] and hi_end - lo_end <= touch):
+                    continue
+                cut[id(lo_seg)] = (_param(lo_seg, lo_pin), 1.0) if lo_seg.b[axis] >= lo_seg.a[axis] \
+                    else (0.0, _param(lo_seg, lo_pin))
+                cut[id(hi_seg)] = (0.0, _param(hi_seg, hi_pin)) if hi_seg.b[axis] >= hi_seg.a[axis] \
+                    else (_param(hi_seg, hi_pin), 1.0)
+    return {i: _except(s, cut[id(s)]) for i, (s, _) in enumerate(leads) if id(s) in cut}
 
 
 def _drawn_apart(pts: list[Point], gap: float) -> list[list[Point]]:

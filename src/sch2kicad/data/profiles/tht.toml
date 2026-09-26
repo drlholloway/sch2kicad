@@ -62,6 +62,18 @@ type = ["diode", "schottky"]
 part = "^(1N400[1-7]|1N58(17|18|19)|UF400[1-7]|BAT4[1-6])"
 footprint = "2025_PedalDivision_Diodes:DO-41_P7.62mm"
 
+# A zener keeps KiCad's own symbol, so nobody fits a signal diode where one goes,
+# on the house footprints: the 1 W 1N47xx is DO-41, the glass 500 mW ones
+# (1N52xx, BZX55/79) DO-35
+[[footprints]]
+type = "zener"
+part = "^1N47[0-9][0-9]"
+footprint = "2025_PedalDivision_Diodes:DO-41_P7.62mm"
+
+[[footprints]]
+type = "zener"
+footprint = "2025_PedalDivision_Diodes:DO-35_P7.62mm"
+
 [[footprints]]
 type = ["npn", "pnp", "njfet", "pjfet", "nmos", "pmos"]
 footprint = "2025_PedalDivision_Transistors:TO-92 Inline"

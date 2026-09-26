@@ -329,3 +329,49 @@ before the parts, it is the only place the semiconductors are named, and where i
 says "typical opamp" the packaging is yours to choose. And a **panel switch the
 profiles have no type for** (the Gargler's 2P3T) is not a reason to stop: bring
 its nodes out as pads, put the wiring in a note, and the board is buildable.
+
+**Kelly Roberts** (the Fix'd Fuzz, 2011) — a black-on-white PNG about 1600 px wide,
+no reference designators at all, so number the parts yourself in reading order.
+Watch for:
+
+- **Crossings drawn as arcs** where the rail steps over a bypass loop. Every
+  junction has a dot; an arc is never one.
+- **A stage switched in and out by two levers drawn apart** — an in-lever and an
+  out-lever, the bypass wire looping over the stage between their upper contacts.
+  The two must move together or the signal stops, so each pair is one DPDT. The
+  lever is one continuous line from contact down to a flat run and up to the next
+  stage's contact: the flat run *is* the common, shared by the out-pole of one
+  stage and the in-pole of the next.
+- **A small arrow along each pot's body** points to its clockwise lug (it points
+  at the input end of Level). And the wiper's pin is where its lead meets the
+  arrow's *base*, not the tip: at the tip it sits 7 px from the pot's own body
+  line and matches that instead of its wire.
+- **Capacitor plates one pixel apart.** The crosscheck handles it (a run broken in
+  two between a part's pins is its body), so expect no warning.
+- **Corrections pasted onto the sheet** — the Fix'd in the name. The emitter
+  resistor's original value is painted out, leaving a grey smudge, and `390r`
+  added beside it in a different grey font. Read the pasted value, and say so in
+  `notes`.
+
+**Blackout Effectors' Musket** (gaussmarkov's redraw of a Big Muff, "corrected as
+per fsb.org") — a 1600×382 PNG, small lettering, most labels written **vertically**
+up the side of their part. Watch for:
+
+- **Ingest used to turn this sheet on its side**: its sideways labels read better
+  turned a quarter than upright. It now counts words as well as labels and only
+  turns a page that reads almost nothing upright — but if `grid.png` comes out
+  sideways on a sheet like this, that is the first thing to suspect.
+- **Corrections in a bolder font, sometimes well away from their part**: R27's `10k`
+  sits 40 px to its right, with R27's own label beside it bare. Five on this sheet
+  (R27, C6, C9, C11, R17). Two publishers in a row did this: expect it on anything
+  called "corrected" or "fixed", and give each pasted value to the part whose own
+  value is missing.
+- **A duplicate reference** (two R19s) with one number never used (R18): the
+  duplicate takes the free number, as 22359's duplicate R3 did. And one cap with
+  no reference at all takes the next free one.
+- **Pots carry their lug numbers** (1/2/3) — use them as printed.
+- **An antiparallel diode pair's labels sit between its two diodes**, so which is
+  D1 and which D2 cannot be read. Identical diodes, so it changes nothing; say so.
+- **Rails named `+9V(T)` and `GND(T)`.** Call them `+9V` and `GND`. OCR does not
+  read these small labels, so a pin whose only ground is its own flag (R17 here)
+  is not checked by the crosscheck — it is not wrong, just unchecked.

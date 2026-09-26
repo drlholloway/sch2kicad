@@ -27,11 +27,25 @@ pytestmark = pytest.mark.skipif(not _have_kicad(), reason="needs KiCad 10 and th
 
 SAMPLES = sorted((HERE.parent / "samples" / "circuits").glob("*.circuit.json"))
 
+# A reading can be right and still wait on something only its owner can settle: a
+# transistor nobody has confirmed the lead order of is never guessed. Such a sheet is
+# held to everything else, and to waiting on exactly that and nothing more — so the
+# day it is settled the entry here fails, and has to come off.
+WAITING = {"fixd-fuzz-roberts": {"Q1"}}          # VP3203: lead order not yet confirmed
+
+
+def _ready(rep, circuit, whole: bool):
+    waits = WAITING.get(circuit.name.split(".")[0], set())
+    held = {u.split(":")[0] for u in rep.unconfirmed}
+    assert (held == waits) if whole else (held <= waits), rep.text()
+    rep.unconfirmed = []
+    assert rep.ok, rep.text()
+
 
 @pytest.mark.parametrize("circuit", SAMPLES, ids=lambda p: p.name.split(".")[0])
 def test_every_sample_is_ready(tmp_path, circuit):
     rep = verify(build(circuit, tmp_path / "board").sch, render=False)
-    assert rep.ok, rep.text()
+    _ready(rep, circuit, whole=True)
     assert rep.erc_warnings == [], rep.text()
 
 
@@ -40,7 +54,7 @@ def test_every_block_is_ready(tmp_path, circuit):
     from sch2kicad.blocks import save_blocks
     for sch in save_blocks(circuit, tmp_path / "blocks"):
         rep = verify(sch, render=False)
-        assert rep.ok, rep.text()
+        _ready(rep, circuit, whole=False)
         assert rep.erc_warnings == [], rep.text()     # e.g. a local label named like a boundary label
 
 

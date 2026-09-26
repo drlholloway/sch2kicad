@@ -110,6 +110,11 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   terminals is known by its shape rather than by any measure of reach: four runs
   of ink closing a rectangle with the pins inside are an outline, and dropping
   them is what keeps a switch's own box from joining everything it encloses. A
+  body can also come back as **one run broken in two**: a capacitor whose plates
+  stand a pixel apart reads as two leads facing each other across a hairline
+  between its pins, which the tracer would bridge, and is cut at its pins like any
+  other run through a body — but only a hairline, so a pin read out along its
+  wire never has that wire taken for body. A
   part is judged one place at a time, since a sheet may draw its supply pins
   somewhere else entirely and the page between the two is nobody's body. What
   counts as ink is read off the page as well: the wires' own colour, picked by
@@ -131,9 +136,9 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   paper between them rather than the distance: a flag stands between its name and
   its stem, and where the sheet draws symbols in another colour that flag is not
   ink the tracer keeps, so a distance is measured across a symbol taken out of
-  the picture. All thirteen sheets are checked against their drawings, and **every
-  one of the 1437 pins they draw is traced**: eleven agree outright, and five
-  disagreements stand on the other two — every one of them the drawing's own
+  the picture. All fifteen sheets, from eight publishers, are checked against their
+  drawings, and **every one of the 1701 pins they draw is traced**: thirteen agree
+  outright, and five disagreements stand on the other two — every one of them the drawing's own
   doing, never a join the tracer invented: an off-page connector drawn twice, a
   jack whose normalling lug is joined until a plug lifts it. They are recorded
   rather than silenced by moving a pin. Planted faults — a pin moved to another

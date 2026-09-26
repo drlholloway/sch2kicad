@@ -277,9 +277,12 @@ every IC pin are the chip's real ones, so a quad op-amp's 1/2/3, 5/6/7, 8/9/10,
   expecting: the conductors are *short*, because only the hop between two symbols
   is wire at all (a pot reaches its resistor in 16 px and its ground flag in 8);
   and a rail flag's stem is mostly symbol, so **the flag's name can sit nearer a
-  passing wire than its own**. 22359 has one of those and it is genuinely
-  ambiguous — OCTAVE-1's `GND` is 18 px above R7's wire and 26 px below its own.
-  Check such a warning by eye and record it rather than moving a pin to silence it.
+  passing wire than its own**. 22359's OCTAVE-1 writes `GND` 18 px above R7's wire
+  and 26 px below its own. The crosscheck settles that by the blank paper between
+  the two rather than the distance — the flag's own bar fills 20 of those 26 px,
+  and R7 has bare page all the way — so expect no warning; if one comes back, it
+  is saying the name really is written against the other wire, and the answer is
+  to look rather than to move a pin until it stops.
 - **Sanity-check a position against the sheet's own geometry.** A KiCad sheet
   repeats itself: on 22359 every resistor body is 72 px, every capacitor 55, and
   every XOR gate 101 px from input to output. A pin that breaks the pattern is

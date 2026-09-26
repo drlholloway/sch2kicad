@@ -126,15 +126,19 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   wire in the space it would stand in, and none anywhere near it, the drawing
   simply does not draw that part — a status LED the builder adds, the spare gate
   of a quad nobody used — and it is named and taken off the tally rather than
-  counted as a pin the check could not read. All thirteen sheets are checked
-  against their drawings, and **every one of the 1437 pins they draw is traced**:
-  ten agree outright, and seven disagreements stand on the other three — every one
-  of them the drawing's own doing, never a join the tracer invented. An off-page
-  connector drawn twice, a jack whose
-  normalling lug is joined until a plug lifts it, a ground flag standing nearer
-  the wrong wire. They are recorded
-  rather than silenced by moving a pin. Planted faults — a pin moved to another net, a crossing read as
-  a junction, two rails mixed up, a resistor shorted end to end — are caught.
+  counted as a pin the check could not read. A rail's **name** is the other way a
+  drawing joins two pins, and which wire it belongs to is settled by the blank
+  paper between them rather than the distance: a flag stands between its name and
+  its stem, and where the sheet draws symbols in another colour that flag is not
+  ink the tracer keeps, so a distance is measured across a symbol taken out of
+  the picture. All thirteen sheets are checked against their drawings, and **every
+  one of the 1437 pins they draw is traced**: eleven agree outright, and five
+  disagreements stand on the other two — every one of them the drawing's own
+  doing, never a join the tracer invented: an off-page connector drawn twice, a
+  jack whose normalling lug is joined until a plug lifts it. They are recorded
+  rather than silenced by moving a pin. Planted faults — a pin moved to another
+  net, a crossing read as a junction, two rails mixed up, a resistor shorted end
+  to end, a ground pin read as the supply — are caught.
 - **M3 (done):** build docs end to end, with a cross-check against the doc's
   parts list — every publisher seen so far reads. PedalPCB Thunder Pipe (63 of
   63 parts agree) and Red Muffin (60 of 60; 4558 power units on their own

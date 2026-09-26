@@ -282,11 +282,7 @@ def test_the_octave_fuzz_agrees_with_its_drawing(tmp_path):
     rep = crosscheck_circuit(c)
     assert rep.unmatched == [], rep.text()
     assert rep.checked == 78, rep.text()
-    # the one thing left is a label the drawing really does write nearer the wrong
-    # wire: OCTAVE-1's ground flag is a red stem with 8 px of green at the far end,
-    # so its name lands 18 px above R7 and 26 px below its own wire
-    assert {m.split(" are one thing")[0] for m in rep.merges} == {"GND, OCT2_TOP"}, rep.text()
-    assert rep.splits == [], rep.text()
+    assert rep.disagreements == 0, rep.text()
 
 
 def test_a_junction_dot_does_not_swallow_the_wire_through_it(tmp_path):
@@ -481,3 +477,70 @@ def test_the_nearest_ink_says_where_a_misread_pin_belongs(tmp_path):
     line = next(u for u in rep.unmatched if u.startswith("R10.1"))
     px = float(line.rpartition("nearest ink ")[2].split()[0])
     assert 15 <= px <= 25, line      # the wire it was moved off, and no further
+
+
+def _flag_pins(c, ink) -> dict[str, str]:
+    """Which pins the sheet's ``GND`` flags reach, and what the reading calls each.
+
+    Built from scratch each call: ``name_nets`` joins the conductors that share a
+    name, so a second measure asked of the same conductors would be answering a
+    question the first one has already changed.
+    """
+    from sch2kicad.trace import (MIN_NET, Conductors, drop_bodies, drop_boxes, name_nets,
+                                 page_unit, pin_points, raster_dots, raster_segments,
+                                 read_text)
+    work = c.path.parent
+    image = work / "source.png"
+    segs, dots = raster_segments(image)
+    touch = page_unit(image)
+    pin_tol, min_net = 11.0, max(6.0, MIN_NET * touch)
+    segs = drop_bodies(drop_boxes(segs, c, touch=touch), c, touch=touch)
+    cond = Conductors(segs, dots or raster_dots(work), t_contacts=True, page=touch)
+    on_pins = {r for r in (cond.net_at(at, pin_tol, min_net) for at in pin_points(c))
+               if r is not None}
+    rails = [n for n in c.all_net_names() if c.net_kind(n) in ("power", "ground")]
+    named = name_nets(cond, read_text(work), rails, on_pins, ink)
+    roots = {r for r, names in named.items() if "GND" in names}
+    return {f"{p.key}.{n}": pin.net for p in c.parts for n, pin in p.pins.items()
+            if pin.at and cond.net_at(tuple(pin.at), pin_tol, min_net) in roots}
+
+
+def test_a_flags_name_reaches_its_wire_across_its_own_symbol(tmp_path):
+    """A rail flag's name is written against the flag, not against the wire.
+
+    22359 draws symbols in red and wires in green, so the whole of OCTAVE-1's ground
+    flag — the pot's lead, the bar, the stem between them — is red, and the conductor
+    the tracer keeps is an 8 px island of green in the middle of it. The sheet writes
+    `GND` under the bar, 26 px from the end of that green. Measured by distance the
+    name is closer to whatever else passes: 18 px above an octave pot's corner. So
+    ground came back welded to the pot's top, and nine more of the sheet's eleven
+    flags reached no wire at all and went unchecked.
+
+    Measuring the blank paper between name and wire instead reads the drawing the way
+    round it means: 6 px to its own wire across the symbol, against 18 px of bare page
+    to the pot. Both measures are asked here, because what makes this a rule and not a
+    tuning is that the two give different answers on the same sheet.
+    """
+    from sch2kicad.trace import page_ink
+    c = _ready(tmp_path, "22359.png", "octave-fuzz-22359.circuit.json")
+    by_distance = _flag_pins(c, None)
+    by_paper = _flag_pins(c, page_ink(c.path.parent / "source.png"))
+    assert {k for k, v in by_distance.items() if v != "GND"} == {"OCTAVE-2.3", "R7.2"}
+    assert {k for k, v in by_paper.items() if v != "GND"} == set()
+    # and the flags the name never reached are the point: 13 ground pins checked, not 3
+    assert len(by_paper) == 13 and "OCTAVE-1.1" in by_paper, sorted(by_paper)
+
+
+def test_a_ground_pin_read_as_the_supply_is_caught_by_its_flags_name(tmp_path):
+    """Ten of those thirteen pins sit alone on their own flag stem, so a name is the
+    only thing that can check them: there is no second pin on the conductor to disagree
+    with. IC1A pin 2 is one — read it as +9V instead of ground, the worst mistake this
+    sheet could hold, and with the flags reaching no further than a distance allows the
+    check passes it in silence."""
+    c = _ready(tmp_path, "22359.png", "octave-fuzz-22359.circuit.json")
+    bad = copy.deepcopy(c)
+    for p in bad.parts:
+        if p.key == "IC1A":
+            p.pins["2"].net = "+9V"
+    rep = crosscheck_circuit(bad)
+    assert any("+9V is where the drawing writes GND" in m for m in rep.misnamed), rep.text()

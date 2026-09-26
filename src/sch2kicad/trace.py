@@ -50,6 +50,13 @@ What counts as a conductor:
 
 A junction dot joins whatever it sits on, crossing or not.
 
+A rail's name is the other way a drawing joins two pins — a flag on a short stem
+with its name written beside it — so which wire a name belongs to is part of the
+reading as well, and getting it wrong welds two rails together. What settles it is
+how much blank paper lies between the name and the wire rather than how far apart
+they are: the flag itself stands in between, and on a sheet that draws its symbols
+in another colour that flag is not ink the tracer keeps (``name_nets``).
+
 Where a pin sits is half of it. A pin belongs where the wire stops and the symbol
 starts — not where the drawing writes its *number*, and not in the middle of the
 body, both of which read plausibly on a zoomed crop and put the pin in blank
@@ -697,6 +704,21 @@ def wire_ink(rgb, min_len: int, ink_level: int = 170):
     return ink if ink is not None else on
 
 
+def page_ink(path: Path, ink_level: int = 170):
+    """Everything drawn on the page, in whatever colour: wires, symbols and text alike.
+
+    ``wire_ink`` keeps the one colour the wires are drawn in, which is what a tracer
+    wants and all it wants. This keeps the rest of the drawing as well, which is what
+    says whether the space between two things on the page is a symbol or bare paper.
+    """
+    import numpy as np
+    from PIL import Image
+
+    with Image.open(path) as im:
+        rgb = np.asarray(im.convert("RGB")).astype(np.int16)
+    return (255 - rgb).max(axis=2) >= 255 - ink_level
+
+
 def raster_segments(path: Path, min_len: int | None = None, max_width: int = 5,
                     ink_level: int = 170) -> tuple[list[Seg], list[Dot]]:
     """Long thin runs of dark ink: what a wire looks like, and text does not.
@@ -803,8 +825,35 @@ def _box_dist(p: Point, box) -> float:
     return math.hypot(dx, dy)
 
 
-def name_nets(cond: Conductors, texts: list[dict], names, on_pins: set[int]) -> dict[int, set[str]]:
-    """Attach a rail's name to the conductor it is written beside.
+def _on_box(p: Point, box) -> Point:
+    """The point of ``box`` nearest ``p`` — where a distance to it is measured from."""
+    x0, y0, x1, y1 = box
+    return (min(max(p[0], x0), x1), min(max(p[1], y0), y1))
+
+
+def _paper(a: Point, b: Point, ink) -> float:
+    """How many pixels between ``a`` and ``b`` the page leaves blank.
+
+    Distance says how far apart two things are. This says how much of the way
+    between them is empty, which is a different question, and the one to ask about
+    a name and the wire it may belong to: what fills the gap is the symbol the name
+    is written against.
+    """
+    steps = int(round(math.dist(a, b)))
+    if steps == 0:
+        return 0.0
+    high, wide = ink.shape
+    blank = 0
+    for k in range(steps + 1):
+        x = int(round(a[0] + (b[0] - a[0]) * k / steps))
+        y = int(round(a[1] + (b[1] - a[1]) * k / steps))
+        blank += not (0 <= y < high and 0 <= x < wide and ink[y, x])
+    return float(blank)
+
+
+def name_nets(cond: Conductors, texts: list[dict], names, on_pins: set[int],
+              ink=None) -> dict[int, set[str]]:
+    """Attach a rail's name to the conductor it is written against.
 
     A rail is drawn once per pin — a flag on a short stem, with its name next to
     it — so the drawing joins those pins by name rather than by wire. Only strings
@@ -813,12 +862,25 @@ def name_nets(cond: Conductors, texts: list[dict], names, on_pins: set[int]) -> 
     it, since a flag is written against its own stem and a wire that merely passes
     within reach is neither.
 
-    Which one is nearest is measured to the wire itself, not to the end of it. A
-    stem ends beside its own name, so for a flag the two are the same; but a name
-    written along a wire sits *beside* it while that wire's end is off to one side,
-    and scoring by the end lets a different net's corner that happens to sit under
-    the text win by a pixel. Naming the wrong net is not a near miss here — the
-    names are what join a rail's pins, so it welds two rails into one.
+    What near means is **how much blank paper lies between the name and the wire**,
+    not how far apart the two are, wherever the page is there to say (``ink``, and
+    a vector page is not). The flag stands between its name and its stem, and on a
+    sheet that draws its symbols in another colour that flag is not ink the tracer
+    keeps — so measuring by distance measures across a symbol taken out of the
+    picture. 22359 writes every ``GND`` 26 px from the end of its own wire, with the
+    ground bar and the red lead it hangs from filling 20 of them, and by distance an
+    octave pot's corner 18 px off on bare paper won: the sheet's ground came back
+    welded to the pot's top, and nine more of its flags reached no wire at all.
+    Counting the paper puts the two 6 px and 18 px away, which is the way round the
+    drawing means it.
+
+    Where the wire is measured from is either end of it or the point of it nearest
+    the name, whichever reads closer. A stem ends beside its own name, so for a flag
+    the two are the same; but a name written along a wire sits *beside* it while that
+    wire's end is off to one side, and scoring by the end alone lets a different
+    net's corner that happens to sit under the text win by a pixel. Naming the wrong
+    net is not a near miss here — the names are what join a rail's pins, so it welds
+    two rails into one.
     """
     want = {n.upper(): n for n in names}
     ends = [(p, i) for i, s in enumerate(cond.segs) for p in (s.a, s.b) if cond.find(i) in on_pins]
@@ -836,11 +898,14 @@ def name_nets(cond: Conductors, texts: list[dict], names, on_pins: set[int]) -> 
         for p, i in ends:
             if min(abs(p[0] - c[0]), abs(p[1] - c[1])) > align:
                 continue
-            d = min(_box_dist(p, box), _box_dist(_nearest_on(c, cond.segs[i]), box))
-            if d <= reach and (best is None or d < best[0]):
-                best = (d, i)
+            for q in (p, _nearest_on(c, cond.segs[i])):
+                d = _box_dist(q, box)
+                gap = d if ink is None else _paper(_on_box(q, box), q, ink)
+                # two wires the same paper from the name: the nearer one is meant
+                if gap <= reach and (best is None or (gap, d) < best[:2]):
+                    best = (gap, d, i)
         if best:
-            hits.append((name, best[1]))
+            hits.append((name, best[2]))
     for name in {n for n, _ in hits}:            # one rail, however many flags draw it
         segs = [i for n, i in hits if n == name]
         for i in segs[1:]:
@@ -1076,6 +1141,7 @@ def crosscheck_circuit(circuit, doc: Path | None = None) -> Crosscheck:
     if (work / "ingest.json").exists():
         meta = json.loads((work / "ingest.json").read_text())
     pin_tol, min_net, touch, page = 5.0, 0.0, 2.0, 0.0
+    ink = None                              # the page itself, where there are pixels of it
     if meta.get("kind") == "vector":
         pdf = doc or Path(meta.get("pdf") or meta.get("input"))
         if not pdf.exists():
@@ -1093,6 +1159,9 @@ def crosscheck_circuit(circuit, doc: Path | None = None) -> Crosscheck:
         segs, dots = raster_segments(image)
         dots = dots or raster_dots(work)
         t_contacts = True
+        # what a rail's name is written against is a symbol, not a wire, so telling
+        # which wire it belongs to takes the whole page, not the colour the wires are in
+        ink = page_ink(image)
         # a pixel reading of a pin's place is worth a few px; and what makes a
         # conductor worth matching a pin to goes with the page, since the lead
         # between two stacked parts on a small sheet is shorter than a stray mark
@@ -1109,6 +1178,6 @@ def crosscheck_circuit(circuit, doc: Path | None = None) -> Crosscheck:
     # only rails: a signal's name may be written anywhere, or read wrong off pixels,
     # and a rail is the only net whose pins the drawing joins by name alone
     rails = [n for n in circuit.all_net_names() if circuit.net_kind(n) in ("power", "ground")]
-    named = name_nets(cond, read_text(work), rails, on_pins)
+    named = name_nets(cond, read_text(work), rails, on_pins, ink)
     return crosscheck(circuit, cond, named, pin_tol=pin_tol, min_net=min_net,
                       reach=BODY_REACH * touch)

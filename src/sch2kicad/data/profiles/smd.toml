@@ -23,6 +23,7 @@ npn = "Transistor_BJT:Q_NPN_BEC"
 pnp = "Transistor_BJT:Q_PNP_BEC"
 njfet = "2025_PedalDivision_Transistors:TH_JFET"      # D-S-G, matches SOT-23 JFETs
 nmos = "Transistor_FET:Q_NMOS_GSD"
+pmos = "Transistor_FET:Q_PMOS_GSD"
 opamp_dual = "2025_PedalDivision_ICs:SMD_Op_amp_Dual"
 opamp_quad = "2025_PedalDivision_ICs:SMD_Op_amp_Quad"   # V+ on 4, V- on 11 (TL074/LM324 order)
 lm386 = "2025_PedalDivision_ICs:TH_LM386"
@@ -37,12 +38,13 @@ npn = "BEC"
 pnp = "BEC"
 njfet = "DSG"
 nmos = "GSD"
+# every SOT-23 P-MOSFET checked is G-S-D too: AO3401A, BSS84, Si2301CDS, IRLML6402
+pmos = "GSD"
 
-# The P-channel parts the table above does not fix: they have no one SOT-23
-# order to assume, so they are drawn in the order the reading gives.
+# The P-channel JFET the table above does not fix: it has no one SOT-23 order
+# to assume, so it is drawn in the order the reading gives.
 [pinout_fallbacks]
 pjfet = "Device:Q_PJFET_{pinout}"
-pmos = "Transistor_FET:Q_PMOS_{pinout}"
 
 [named_parts]
 TL071 = "Amplifier_Operational:TL071"

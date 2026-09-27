@@ -220,6 +220,21 @@ def test_a_fet_outside_the_house_order_gets_the_symbol_for_its_order(ptype, part
     assert q4.problems == []
 
 
+
+def test_an_smd_p_mosfet_takes_the_sot23_order_not_the_to92_one():
+    """The Fix'd Fuzz's VP3203 is S-G-D in TO-92 (Lane), and SMD drew it S-G-D on a
+    SOT-23 footprint with no word said. Every SOT-23 P-MOSFET checked — AO3401A,
+    BSS84, Si2301CDS, IRLML6402 — is G-S-D on pads 1-2-3, as the N-channel ones are,
+    so a board built from the TO-92 order would have gate and source swapped."""
+    import json
+    from sch2kicad.circuit import from_dict
+    from sch2kicad.parts import load_profile, resolve_all
+    fixd = CIRCUIT.parent / "fixd-fuzz-roberts.circuit.json"
+    res = resolve_all(from_dict(json.loads(fixd.read_text())), load_profile("smd"), SymbolResolver())
+    q1 = next(r for r in res if r.ref == "Q1")
+    assert q1.lib_id == "Transistor_FET:Q_PMOS_GSD", q1.problems
+    assert any("SMD package order G-S-D" in n for n in q1.notes), q1.notes
+
 def test_a_p_channel_jfet_is_never_drawn_as_an_npn(tmp_path):
     """A part with no symbol fell through to Device:Q_NPN. The build is NOT READY either
     way, but a P-channel JFET drawn as an NPN is a wrong part that reads as a right one."""

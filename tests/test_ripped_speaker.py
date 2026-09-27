@@ -31,7 +31,7 @@ SAMPLES = sorted((HERE.parent / "samples" / "circuits").glob("*.circuit.json"))
 # transistor nobody has confirmed the lead order of is never guessed. Such a sheet is
 # held to everything else, and to waiting on exactly that and nothing more — so the
 # day it is settled the entry here fails, and has to come off.
-WAITING = {"fixd-fuzz-roberts": {"Q1"}}          # VP3203: lead order not yet confirmed
+WAITING: dict[str, set[str]] = {}
 
 
 def _ready(rep, circuit, whole: bool):

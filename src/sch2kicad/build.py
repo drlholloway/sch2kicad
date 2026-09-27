@@ -400,7 +400,8 @@ class Builder:
         for net in flagged:
             lead, follow = self._flag_leaders(net, terms[net])
             pending = [t for t in lead
-                       if not self._attach_flag(net, t, router, owner_part.get(t.owner), label_fail=False)]
+                       if not self._attach_flag(net, t, router, owner_part.get(t.owner),
+                                                label_fail=False, first=True)]
             if pending + follow:
                 orphans[net] = pending + follow
         self._pwr_flags(terms, router)
@@ -563,8 +564,16 @@ class Builder:
 
     def _attach_flag(self, net: str, t: Terminal, router: Router, pl: Placed | None,
                      sym: LibSymbol | None = None, ref: str = "#PWR?",
-                     label_fail: bool = True) -> bool:
-        """Hang a power flag off a pin: upright if at all possible, like a hand-drawn sheet."""
+                     label_fail: bool = True, first: bool = False) -> bool:
+        """Hang a power flag off a pin: upright if at all possible, like a hand-drawn sheet.
+
+        ``first`` is the pass before any signal is routed, when the pin has a better
+        answer still to come — a wire to a flag this rail already has. So it takes no
+        flag turned to face the pin (a ground symbol standing on its head reads as
+        anything but ground) and none that would stand beside one of its own rail's:
+        two symbols a few millimetres apart say one node twice. Either way the pin
+        waits for ``_share_flags``, which turns or crowds a flag only if nothing joins.
+        """
         if sym is None:
             sym, value = self._flag_symbol(net)
         else:
@@ -584,6 +593,8 @@ class Builder:
             if not self._box_free(box, router, net, None, 0) or not self._path_free(path, router, net):
                 return None
             if not over_text and any(_overlap(box, tb) for tb in self.text_boxes):
+                return None
+            if first and any(math.dist(tip, f) < SHARE_MM for f in self.flag_pins.get(net, [])):
                 return None
             return (path, o, origin, box)
 
@@ -605,7 +616,7 @@ class Builder:
                 for s2 in far:
                     p2 = pt(p1, side, s2)
                     cands += [([t.pos, p1, p2, pt(p2, up_dir, s3)], upright) for s3 in near]
-        for s in (2.54, 3.81, 5.08, 1.27, 7.62):   # last resort: turn the flag to face the pin
+        for s in () if first else (2.54, 3.81, 5.08, 1.27, 7.62):   # last resort: face the pin
             for o in (Orient(a, None) for a in (0, 90, 180, 270)):
                 bd = apply(o.m, *body_lib)
                 if (round(bd[0]), round(bd[1])) == t.out:
@@ -677,6 +688,10 @@ class Builder:
             # only a terminal the net's wires actually reach can be shared with: route_net
             # seeds its tree from those cells, and would go drawing a wire to any other
             cells = router.net_cells.get(net, set())
+            if t.cell in cells:
+                # already on the rail: a neighbour's flag stub runs through this pin
+                # (two pins facing each other, one lead's length apart)
+                continue
             reach = [u for u in self.net_terms[net] if u is not t and u.cell in cells]
             # along its own lead first, as a wire should read; failing that, turning at
             # the tip, which is all a pin walled in on its own side can do

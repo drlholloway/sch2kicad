@@ -373,3 +373,44 @@ def test_two_pins_with_no_room_share_one_flag(tmp_path):
                if any(math.dist((_num(sexpr.child(g, "at")[1]), _num(sexpr.child(g, "at")[2])), p) < 5.1
                       for s in w if u1_11 in s or pad in s for p in s)]
     assert len(on_node) == 1, f"{len(on_node)} ground symbols where one should serve the node"
+
+
+def _flags(root):
+    """Every rail symbol on the sheet as (net, x, y, angle); PWR_FLAG markers aside."""
+    out = []
+    for s in sexpr.children(root, "symbol"):
+        lib = str(sexpr.child(s, "lib_id")[1])
+        if ("Flags:" not in lib and not lib.startswith("power:")) or "PWR_FLAG" in lib:
+            continue
+        at = sexpr.child(s, "at")
+        net = next(str(p[2]) for p in sexpr.children(s, "property") if str(p[1]) == "Value")
+        out.append((net, _num(at[1]), _num(at[2]), _num(at[3]) if len(at) > 3 else 0.0))
+    return out
+
+
+@pytest.mark.parametrize("circuit", SAMPLES, ids=lambda p: p.name.split(".")[0])
+def test_every_flag_stands_upright(tmp_path, circuit):
+    """A ground symbol on its head reads as anything but ground.
+
+    Turning a flag to face its pin was the first pass's last resort, and it took it
+    six times across the samples — the Tri-Vibe's VB arrow pointing down beside D3,
+    two grounds apiece standing upside down on the Higgs and the Theremin. Every one
+    of those pins had a flag of its own rail close enough to wire to instead.
+    """
+    root = sexpr.parse(build(circuit, tmp_path / "board").sch.read_text())
+    assert [f for f in _flags(root) if f[3] != 0] == []
+
+
+@pytest.mark.parametrize("circuit", SAMPLES, ids=lambda p: p.name.split(".")[0])
+def test_no_rail_is_flagged_twice_in_one_place(tmp_path, circuit):
+    """Two symbols of one rail a few millimetres apart say one node twice.
+
+    Pins that close already share a flag; this is the case that grouping by pin
+    missed, where the pins are farther apart and a dog-leg brings their flags
+    together — twelve pairs across the samples, the Gargler's VR pair 2.54 mm apart.
+    """
+    from sch2kicad.build import SHARE_MM
+    fl = _flags(sexpr.parse(build(circuit, tmp_path / "board").sch.read_text()))
+    close = [(a, b) for i, a in enumerate(fl) for b in fl[i + 1:]
+             if a[0] == b[0] and math.dist(a[1:3], b[1:3]) < SHARE_MM]
+    assert close == []

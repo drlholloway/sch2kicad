@@ -142,9 +142,11 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   upright page is turned with `ingest --turn`, its vector segments turned with it.
   A rail's name counts only as the reading spells it or in capitals, so OCR
   making "Vr" of a rotated part number cannot weld two rails.
-  All twenty-three sheets,
-  from thirteen publishers, are checked against their drawings, and **every one of
-  the 2466 pins they draw is traced**: nineteen agree outright, and nine disagreements stand on the other four — every one of them the drawing's own
+  On a sheet drawn in more than one colour, the junction dots say which is the
+  wires': they are drawn in it (an Eagle sheet's red parts outran its green wires).
+  All twenty-four sheets,
+  from fourteen publishers, are checked against their drawings, and **every one of
+  the 2583 pins they draw is traced**: twenty agree outright, and nine disagreements stand on the other four — every one of them the drawing's own
   doing, never a join the tracer invented: an off-page connector drawn twice, a
   jack whose normalling lug is joined until a plug lifts it, a pair of pads joined
   only by a label, a battery with its wire drawn straight through the cells. They are recorded

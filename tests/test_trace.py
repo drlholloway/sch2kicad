@@ -495,11 +495,12 @@ def _flag_pins(c, ink) -> dict[str, str]:
                                  read_text)
     work = c.path.parent
     image = work / "source.png"
-    segs, dots = raster_segments(image)
+    dots = raster_dots(work)
+    segs, _ = raster_segments(image, dots=dots)
     touch = page_unit(image)
     pin_tol, min_net = 11.0, max(6.0, MIN_NET * touch)
     segs = drop_bodies(drop_boxes(segs, c, touch=touch), c, touch=touch)
-    cond = Conductors(segs, dots or raster_dots(work), t_contacts=True, page=touch)
+    cond = Conductors(segs, dots, t_contacts=True, page=touch)
     on_pins = {r for r in (cond.net_at(at, pin_tol, min_net) for at in pin_points(c))
                if r is not None}
     rails = [n for n in c.all_net_names() if c.net_kind(n) in ("power", "ground")]
@@ -805,3 +806,32 @@ def test_the_pocket_comb_agrees_but_for_its_battery(tmp_path):
     assert rep.disagreements == 2, rep.text()
     assert not any("VR" in m and "VB" in m for m in rep.merges), rep.text()
     assert all("9V_IN" in m for m in rep.merges + rep.misnamed), rep.text()
+
+
+def test_the_junction_dots_say_which_colour_the_wires_are():
+    """An Eagle sheet draws parts red and wires green, and a big IC's red box and
+    leads can outrun the green wires on long straight runs — the Hot Mett's did, and
+    the tracer followed the symbols. The dots are drawn in the wires' colour."""
+    import numpy as np
+    from sch2kicad.trace import Dot, wire_ink
+    rgb = np.full((400, 600, 3), 255, np.int16)
+    red, green = (212, 61, 61), (61, 188, 145)
+    rgb[40:360, 100:103] = red                    # a tall IC box, long red runs
+    rgb[40:360, 300:303] = red
+    rgb[40:43, 100:303] = red
+    rgb[357:360, 100:303] = red
+    rgb[200:202, 320:420] = green                 # shorter green wires, with a dot
+    rgb[260:262, 320:420] = green
+    rgb[195:207, 364:376] = green
+    assert wire_ink(rgb, 5)[50, 101], "without dots the long red runs win"
+    ink = wire_ink(rgb, 5, dots=[Dot(370, 201, 6)])
+    assert ink[200, 330] and ink[260, 330] and not ink[50, 101]
+
+
+def test_the_hot_mett_agrees_with_its_drawing(tmp_path):
+    """Moonn Electronics' Hot Mett, an Eagle sheet in red and green: with the wire
+    colour read off its dots, every pin traces and the reading agrees outright."""
+    c = _ready(tmp_path, "Hot_Mett_Docs.pdf", "hot-mett-moonn.circuit.json", page=3)
+    rep = crosscheck_circuit(c)
+    assert rep.checked == rep.drawn == 117, rep.text()
+    assert rep.disagreements == 0, rep.text()

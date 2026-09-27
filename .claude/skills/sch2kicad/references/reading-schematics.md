@@ -461,3 +461,21 @@ and the parts list are the cross-checks. Watch for:
   GND joined; bring it out as 9V and GND pads. The LED's cathode runs to a pad
   marked `L`: that is SW. A parts-list row with no part (R54) is a stray — check
   the shopping list's counts.
+
+**Eagle sheets** (Moonn Electronics' Hot Mett) — parts red, wires green, pads as
+red X marks, exported as one raster image. Watch for:
+
+- **A pin is where the green wire starts**, at the outer tip of the part's red
+  lead, not at the body: 10-20 px out on a small sheet. Read the pin there, or the
+  cross-check finds no wire under it.
+- **Read each capacitor's plates, not its label**: a cap hung under a junction
+  (C7 below the dot) is easy to place 30 px low, which puts both ends on one net.
+  A cap between two IC pins (C9 across PT2399 9 and 10) has two nets.
+- **Follow a long return wire to its dot**: the Hot Mett's REPEAT wiper lands
+  after R12, on the MIX side, not on the PT2399's output.
+- KiCad has `Audio:PT2399` with the datasheet's numbering; REF (2) and CLK_O (5)
+  may be left open on the sheet.
+- The doc may ask to swap a pot's lugs 1 and 3 (Moonn's MIX, TIME, REPEAT turn
+  backwards). Ask; to swap, keep each wire where it is drawn and trade which end
+  is `cw` and which `ccw`, so the cross-check still agrees.
+- A regulator drawn as a 7805 may be a 78L05 in TO-92: look at the board.

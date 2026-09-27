@@ -736,7 +736,7 @@ def _long_ink(mask, least: int) -> int:
     return total
 
 
-def wire_ink(rgb, min_len: int, ink_level: int = 170):
+def wire_ink(rgb, min_len: int, ink_level: int = 170, dots=()):
     """Which of the colours on this page is the one the wires are drawn in.
 
     Ink is what stands far enough off the page, measured in whichever channel
@@ -755,6 +755,14 @@ def wire_ink(rgb, min_len: int, ink_level: int = 170):
     A page drawn in one colour picks that colour, which is what every sheet before
     22359 did anyway. A page that draws its wires in two colours would keep only
     the busier one — say so in the report rather than trusting it.
+
+    Where ingest found the page's junction dots, they say it outright: a dot is
+    drawn in the colour of the wires it joins, and on every sheet in the corpus
+    that has them nearly all of them are. The long runs are only the fallback. An
+    Eagle sheet draws its parts red and its wires green, and the Hot Mett's red —
+    a PT2399's box 450 px tall, every lead and ground bar — outscored the wires on
+    runs, so the tracer followed the symbols and lost the circuit; all 22 of its
+    dots are green.
 
     How far off the page a line stands is read across the pair it may be split
     over. A line thinner than a pixel that falls between two of them puts half its
@@ -782,10 +790,19 @@ def wire_ink(rgb, min_len: int, ink_level: int = 170):
     whole = np.zeros(rgb.shape[:2], np.int32)
     whole[on] = code
     least = max(min_len, rgb.shape[1] // WIRE_RUN)
+    keys = [k for k in np.argsort(counts)[::-1][:6] if counts[k] >= on.sum() * 0.02]
+    held = []                                       # the colour each dot is drawn in
+    for d in dots:
+        x, y = int(round(d.x)), int(round(d.y))
+        v = whole[max(0, y - 1):y + 2, max(0, x - 1):x + 2][on[max(0, y - 1):y + 2, max(0, x - 1):x + 2]]
+        if v.size:
+            held.append(int(np.bincount(v).argmax()))
+    if held:
+        top = max(keys, key=held.count, default=None)
+        if top is not None and held.count(top) * 2 > len(held):
+            return on & (whole == top)
     best, ink = -1, None
-    for key in np.argsort(counts)[::-1][:6]:
-        if counts[key] < on.sum() * 0.02:
-            break
+    for key in keys:
         only = on & (whole == key)
         score = _long_ink(only, least)
         if score > best:
@@ -809,7 +826,7 @@ def page_ink(path: Path, ink_level: int = 170):
 
 
 def raster_segments(path: Path, min_len: int | None = None, max_width: int = 5,
-                    ink_level: int = 170) -> tuple[list[Seg], list[Dot]]:
+                    ink_level: int = 170, dots=()) -> tuple[list[Seg], list[Dot]]:
     """Long thin runs of dark ink: what a wire looks like, and text does not.
 
     A run is grown across neighbouring rows (or columns) so a two-pixel line counts
@@ -824,7 +841,7 @@ def raster_segments(path: Path, min_len: int | None = None, max_width: int = 5,
         rgb = np.asarray(im.convert("RGB")).astype(np.int16)
     if min_len is None:
         min_len = max(5, round(rgb.shape[1] / PAGE_UNIT))
-    dark = wire_ink(rgb, min_len, ink_level)
+    dark = wire_ink(rgb, min_len, ink_level, dots)
     segs: list[Seg] = []
     for axis in (0, 1):                          # 0: rows → horizontal runs, 1: columns
         m = dark if axis == 0 else dark.T
@@ -1369,8 +1386,9 @@ def crosscheck_circuit(circuit, doc: Path | None = None) -> Crosscheck:
             image = circuit.source_image()
         if not image or not image.exists():
             raise FileNotFoundError(f"source image {image} not found")
-        segs, dots = raster_segments(image)
-        dots = dots or raster_dots(work)
+        # the dots ingest found say which colour the wires are drawn in
+        dots = raster_dots(work)
+        segs, _ = raster_segments(image, dots=dots)
         t_contacts = True
         # what a rail's name is written against is a symbol, not a wire, so telling
         # which wire it belongs to takes the whole page, not the colour the wires are in

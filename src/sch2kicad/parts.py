@@ -31,7 +31,7 @@ SWITCHES = {"switch_spdt", "switch_dpdt"}
 # their throws are an order the shaft turns through rather than a pair.
 ROTARIES = {"switch_2p3t"}
 KNOWN_TYPES = (TWO_TERMINAL | POLAR_TWO | DIODES | POTS | TRANSISTORS | OPAMPS | SWITCHES
-               | ROTARIES | {"lm386", "ic"})
+               | ROTARIES | {"lm386", "ic", "transformer"})
 
 # What a switch's action means to whoever orders and wires the part. The netlist
 # cannot carry it — com/a/b is identical for all three — so the schematic has to
@@ -402,7 +402,7 @@ class PartResolver:
 
         # ---- value and fields
         value = part.value
-        if ptype in TRANSISTORS or ptype in OPAMPS or ptype in ("ic", "lm386"):
+        if ptype in TRANSISTORS or ptype in OPAMPS or ptype in ("ic", "lm386", "transformer"):
             value = part.part or part.value
         elif ptype in DIODES and part.part and not value:
             value = part.part
@@ -557,8 +557,11 @@ class PartResolver:
             com = [p.number for p in ends if p.x < 0]
             throws = [p.number for p in ends if p.number not in com]
             if com and len(throws) == 2:
+                # not swappable: both poles throw the same way, so "a" is lug 1 on one
+                # pole and lug 4 on the other. Swapping one pole's throws to match the
+                # drawing (the Fix'd Fuzz draws pole B mirrored) paired BYP with a stage
+                # output; a mirror of the symbol matches the drawing without that.
                 pmap = {"com": com[0], "a": throws[0], "b": throws[1]}
-                swappable.append(("a", "b"))
             else:
                 problems.append(f"{part.key}: could not identify DPDT pole pins")
         else:  # ic, lm386, anything with explicit numbers

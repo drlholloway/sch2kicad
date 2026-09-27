@@ -375,3 +375,25 @@ up the side of their part. Watch for:
 - **Rails named `+9V(T)` and `GND(T)`.** Call them `+9V` and `GND`. OCR does not
   read these small labels, so a pin whose only ground is its own flag (R17 here)
   is not checked by the crosscheck — it is not wrong, just unchecked.
+
+**Talisman Audio doc sheets** (Angry Droid, and three unbranded sheets in the same
+hand: Djinn's Flame, Hull Fuzz, TL431 Precision Fuzz) — KiCad-drawn PNGs 850-1300 px
+wide, black on white, the parts list printed beside the circuit. Watch for:
+
+- **Pin numbers are printed on every transistor, pot, IC and transformer.** Use
+  them to place pins, but not as the part's own numbering: the Djinn's transformer
+  is numbered 1, 2 / 5, 4, 3 on the sheet and 1, 3 / 6, 5, 4 on the Xicon part.
+- **Diagonal crossovers.** The Angry Droid crosses its multivibrator over in two
+  Xs of slanting wire with no dot — a crossing, not a junction. The tracer reads a
+  slanting wire as one line now, so it agrees; check the Xs by eye all the same.
+- **A DPDT drawn as two boxes with the terminals inside** (Hull Fuzz). Put each
+  pin on its terminal circle, inside the box — on the box's edge the cross-check
+  reads the outline as wire and joins the throws. Pair the throws the way the lugs
+  are numbered: `a` is 1 on pole A and 4 on pole B.
+- **Power block with circles at both ends.** The right-hand `9v`/`GND` circles are
+  the same rails carried on; model the left pair as the ports and say so in a note.
+- **A thick op-amp triangle.** The LM386's sides are 3 px of ink, so a pin put a
+  few pixels off its lead lands on the outline instead (the Djinn's pin 3 at 324
+  rather than 328). Read the lead's row off the pixels.
+- **The flicker LEDs, "RCF"** (Hull Fuzz D1/D2): red candle-flicker LEDs used as
+  the bias pair, value as printed. The TL431 is an `ic` with pins `REF`, `A`, `K`.

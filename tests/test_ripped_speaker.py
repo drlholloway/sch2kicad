@@ -355,6 +355,27 @@ def test_a_three_position_dpdt_says_so_on_the_sheet(tmp_path):
         assert names.count("Description") == 1, names
 
 
+def test_both_poles_of_a_dpdt_throw_the_same_way():
+    """A toggle's lever carries both commons to the same end: lugs 1 and 4 in one
+    position, 3 and 6 in the other. The Fix'd Fuzz draws each stage switch's pole B
+    mirrored, and the fit matched that by swapping pole B's throws instead of mirroring
+    the symbol — BYP landed on lug 1 of one pole and lug 6 of the other, so each stage
+    took its input from one position and gave its output in the other, and the pedal
+    passed nothing either way. Same nets, so verify could not see it."""
+    from sch2kicad.circuit import load
+    from sch2kicad.geometry import fit_orientation
+    from sch2kicad.parts import load_profile, resolve_all
+
+    fixd = HERE.parent / "samples" / "circuits" / "fixd-fuzz-roberts.circuit.json"
+    res = resolve_all(load(fixd), load_profile("tht"), SymbolResolver())
+    lugs = {(r.ref, r.part.unit): fit_orientation(r).pinmap for r in res if r.part.type == "switch_dpdt"}
+    assert len(lugs) == 8
+    for sw in ("SW1", "SW2", "SW3", "SW4"):
+        a, b = lugs[(sw, "A")], lugs[(sw, "B")]
+        assert (a["a"], b["a"]) == ("1", "4"), (sw, a, b)    # BYP, both ends, one position
+        assert (a["b"], b["b"]) == ("3", "6"), (sw, a, b)    # the stage, in the other
+
+
 def test_a_rotary_pole_keeps_its_throws_in_the_order_the_shaft_turns():
     """The Gargler's 2P3T, which had been three bare pads with the wiring in a note.
 

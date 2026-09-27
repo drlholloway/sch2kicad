@@ -26,6 +26,9 @@ lm386 = "2025_PedalDivision_ICs:TH_LM386"
 switch_spdt = "2025_PedalDivision_Switches:SPDT_Toggle_Sw"
 switch_dpdt = "2025_PedalDivision_Switches:DPDT_Toggle_Sw"
 switch_2p3t = "2025_PedalDivision_Switches:SW_Rotary_2x3"   # the 16mm mini rotary, on the 2P4T body
+# the Xicon 42TM series (42TM018 & co.): pins 1-2-3 one winding, 4-5-6 the other,
+# 2 and 5 the centre taps, as Xicon number them; through-hole on either profile
+transformer = "2025_PedalDivision_Transformers:TM011-R"
 
 # The pinout the house symbol above is wired for. A part with a different
 # lead order gets the stock KiCad symbol for its order instead, on the same
@@ -56,6 +59,10 @@ LM741 = "Amplifier_Operational:LM741"
 LM13700 = "sch2kicad:LM13700"
 # KiCad ships no CD4517; the symbol travels with the project
 CD4517 = "sch2kicad:CD4517"
+# The TL431 shunt reference: give its pins by name (REF, A, K), since TI and
+# onsemi number the same TO-92 leads opposite ways. Seen from the flat face,
+# leads down, both are REF-A-K from the left, which is KiCad's TL431LP on pads 1-2-3.
+TL431 = "Reference_Voltage:TL431LP"
 
 [[footprints]]
 type = ["diode", "schottky"]
@@ -76,6 +83,11 @@ footprint = "2025_PedalDivision_Diodes:DO-35_P7.62mm"
 
 [[footprints]]
 type = ["npn", "pnp", "njfet", "pjfet", "nmos", "pmos"]
+footprint = "2025_PedalDivision_Transistors:TO-92 Inline"
+
+[[footprints]]
+type = "ic"
+part = "^TL431"
 footprint = "2025_PedalDivision_Transistors:TO-92 Inline"
 
 [[footprints]]

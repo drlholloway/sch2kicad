@@ -612,3 +612,60 @@ def test_the_musket_agrees_with_its_drawing_the_right_way_up(tmp_path):
     rep = crosscheck_circuit(c)
     assert rep.disagreements == 0, rep.text()
     assert rep.checked == rep.drawn == 136, rep.text()
+
+
+def test_two_slanting_wires_that_cross_do_not_meet(tmp_path):
+    """A raster keeps a wire as a run along a row or a column, and a slanting wire is a
+    staircase of short steps chained end to end. Where two cross, the staircases share
+    pixels and the chain runs from one to the other. Read as lines, they meet only where
+    one of them ends — which is where each meets the stubs it runs between."""
+    from PIL import Image, ImageDraw
+    from sch2kicad.trace import Conductors, raster_segments
+    img = Image.new("RGB", (400, 200), "white")
+    d = ImageDraw.Draw(img)
+    d.line([(100, 50), (300, 110)], fill="black")        # one way across
+    d.line([(100, 110), (300, 50)], fill="black")        # and the other, through it
+    for y in (50, 110):
+        d.line([(40, y), (100, y)], fill="black")
+        d.line([(300, y), (360, y)], fill="black")
+    path = tmp_path / "x.png"
+    img.save(path)
+    segs, _ = raster_segments(path)
+    cond = Conductors(segs, [], t_contacts=True, page=2.0)
+
+    def at(p):
+        return cond.find(min(range(len(segs)), key=lambda i: _dist(p, segs[i])))
+    assert at((60, 50)) == at((340, 110)), "a slanting wire does not carry its stubs"
+    assert at((60, 110)) == at((340, 50)), "a slanting wire does not carry its stubs"
+    assert at((60, 50)) != at((60, 110)), "two slanting wires joined where they cross"
+
+
+def _dist(p, s):
+    from sch2kicad.trace import _dist_to_seg
+    return _dist_to_seg(p, s)
+
+
+def test_the_angry_droids_crossovers_are_not_junctions(tmp_path):
+    """Talisman Audio cross the Angry Droid's multivibrator over in two Xs of slanting
+    wire with no dot — each capacitor and each diode to the far transistor. Read as
+    staircases, they made one net of both collectors' loads and another of both bases."""
+    c = _ready(tmp_path, "angrydroidDOC.png", "angry-droid-talisman.circuit.json")
+    rep = crosscheck_circuit(c)
+    assert rep.disagreements == 0, rep.text()
+    assert rep.checked == rep.drawn == 94, rep.text()
+    assert rep.pins["C6.2"][1] == rep.pins["D2.A"][1] != rep.pins["C7.2"][1] == rep.pins["D1.A"][1], rep.text()
+
+
+@pytest.mark.parametrize("source, circuit, pins", [
+    ("TL431PFV4DOC.png", "tl431-precision-fuzz.circuit.json", 31),
+    ("hullfuzzdpdtDOC.png", "hull-fuzz-talisman.circuit.json", 36),
+    ("djinnDOC.png", "djinns-flame-talisman.circuit.json", 76),
+])
+def test_the_talisman_sheets_agree_with_their_drawings(tmp_path, source, circuit, pins):
+    """Talisman Audio's doc sheets: KiCad-drawn, black on white, pin numbers printed on
+    every transistor, pot and IC, and a DPDT drawn as two boxes with its terminals
+    inside — the Disorder's style, so the outline rule reads it without help."""
+    c = _ready(tmp_path, source, circuit)
+    rep = crosscheck_circuit(c)
+    assert rep.disagreements == 0, rep.text()
+    assert rep.checked == rep.drawn == pins, rep.text()

@@ -160,6 +160,32 @@ def fold_output_driven(errors: list[str], sch: Path, nets: dict[str, set[str]],
     return keep, notes
 
 
+def fold_open_driven(errors: list[str], nets: dict[str, set[str]],
+                     pintypes: dict[str, str]) -> tuple[list[str], list[str]]:
+    """A base fed straight from another transistor's collector (the Angry Droid's
+    2N3904 into its 2N3906) has nothing on its net KiCad counts as a driver: the house
+    symbols type collector and emitter as open drivers, and KiCad's ERC takes only
+    outputs, passives and the like. Where KiCad's own netlist shows an open collector
+    or emitter on the input's net, the complaint becomes a note; any other undriven
+    input stays an error."""
+    import re
+    keep: list[str] = []
+    folded: dict[str, tuple[str, list[str]]] = {}
+    for e in errors:
+        m = re.match(r"\[pin_not_driven\].* Symbol (\S+) Pin (\S+) ", e)
+        if m:
+            node = f"{m.group(1)}.{m.group(2)}"
+            net = next((name for name, nodes in nets.items() if node in nodes), None)
+            opens = sorted(n for n in nets.get(net, ()) if pintypes.get(n) in ("open_collector", "open_emitter"))
+            if opens:
+                folded.setdefault(net, (node, opens))
+                continue
+        keep.append(e)
+    notes = [f"{node} is driven by {', '.join(opens)} (open collector/emitter), which KiCad's ERC "
+             f"doesn't count as a driver" for node, opens in folded.values()]
+    return keep, notes
+
+
 def compare_nets(expected: dict[str, list[str]], actual: dict[str, set[str]]) -> list[str]:
     """Compare partitions of pins; net names are irrelevant, connectivity is not."""
     diffs: list[str] = []
@@ -318,6 +344,8 @@ def verify(sch: Path, build_json: Path | None = None, source_image: Path | None 
     rep.erc_errors, rep.erc_warnings = run_erc(sch, work / "erc.json")
     rep.erc_errors, driven_notes = fold_output_driven(rep.erc_errors, sch, nets, pintypes)
     rep.notes += driven_notes
+    rep.erc_errors, open_notes = fold_open_driven(rep.erc_errors, nets, pintypes)
+    rep.notes += open_notes
     # a library symbol with pins off the 50 mil grid makes KiCad flag every pin and the
     # short stub joining it to the grid; say that once instead of once per endpoint
     off = [w for w in rep.erc_warnings if w.startswith("[endpoint_off_grid]")]

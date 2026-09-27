@@ -84,6 +84,7 @@ BODY_GAP = 80          # pins further apart than this, in those units, are drawn
 COLOUR_STEPS = 6       # how finely two colours are told apart, per channel
 WIRE_RUN = 20          # only a wire runs this share of the page in a straight line
 HOP_GAP = 3.0          # how wide the break marking a crossing can be, in page units
+DIAG_GAP = 3          # px of paper a slanting wire may cross, where another passes through it
 PAST_END = 0.75        # how far past a wire a run may stop and still have met it
 
 
@@ -791,7 +792,126 @@ def raster_segments(path: Path, min_len: int | None = None, max_width: int = 5,
             stops = np.flatnonzero(d[line] == -1)
             runs[line] = [(int(s), int(e) - 1) for s, e in zip(starts, stops) if e - s >= min_len]
         segs += _group_runs(runs, axis, max_width)
+    diagonals = _diagonals(dark, max(min_len, dark.shape[1] // WIRE_RUN))
+    if diagonals:
+        segs = [s for s in segs if not _along(s, diagonals)] + diagonals
     return segs, []
+
+
+def _diagonals(dark, wire: int, band: float = 1.5) -> list[Seg]:
+    """Wires drawn on the slant, each as one segment.
+
+    A raster keeps a wire as a run of ink along a row or a column, and a slanting
+    wire has none: a shallow one comes out as a staircase of short steps, each a run
+    in its own right, chained end to end within the tracer's reach. That carries it
+    well enough — until two of them cross. The Angry Droid's multivibrator crosses
+    its capacitors and its diodes over to the opposite transistor in two Xs, with no
+    dot, and where the staircases pass through each other they share pixels, so the
+    steps chained one side of the circuit to the other: both collectors and both
+    bases, one net.
+
+    Read as lines, they are what a vector page would have made of them: two strokes
+    that meet only where one of them ends. A slanting line is only a wire if it runs
+    straight for a tenth of the page, twice what a straight wire has to, and the ink
+    is unbroken along it but for the gap where it passes through another: no letter,
+    zigzag, arc of a logo or side of an op-amp's triangle does that, and those stay
+    the staircases they always were.
+    """
+    import cv2
+    import numpy as np
+
+    img = dark.astype(np.uint8) * 255
+    found = cv2.HoughLinesP(img, 1, np.pi / 360, threshold=max(20, wire // 2),
+                            minLineLength=wire, maxLineGap=2)
+    if found is None:
+        return []
+    h, w = dark.shape
+
+    def inked(p) -> bool:
+        """Ink on the line itself: the two pixels either side of it, and no further,
+        so a walk that carries on into the wire it meets stops a few pixels in."""
+        x, y = p
+        near = {(math.floor(x), math.floor(y)), (math.ceil(x), math.ceil(y)),
+                (math.floor(x), math.ceil(y)), (math.ceil(x), math.floor(y))}
+        return any(0 <= j < h and 0 <= i < w and dark[j, i] for i, j in near)
+
+    def walk(p, u) -> Point:
+        """Out along ``u`` from ``p`` for as long as the ink goes, over a crossing's gap."""
+        miss, step = 0, p
+        while miss <= DIAG_GAP:
+            nxt = (step[0] + u[0], step[1] + u[1])
+            if not (0 <= nxt[0] < w and 0 <= nxt[1] < h):
+                break
+            step = nxt
+            if inked(step):
+                p, miss = step, 0
+            else:
+                miss += 1
+        return p
+
+    ys, xs = np.nonzero(dark)
+
+    def refit(s: Seg) -> Seg:
+        """The straight line through the ink along ``s``, over the same span."""
+        x0, x1 = sorted((s.a[0], s.b[0]))
+        y0, y1 = sorted((s.a[1], s.b[1]))
+        box = (xs >= x0 - 2) & (xs <= x1 + 2) & (ys >= y0 - 2) & (ys <= y1 + 2)
+        px, py = xs[box].astype(float), ys[box].astype(float)
+        dx, dy = s.b[0] - s.a[0], s.b[1] - s.a[1]
+        n = math.hypot(dx, dy)
+        on = np.abs((px - s.a[0]) * dy - (py - s.a[1]) * dx) / n <= band
+        if on.sum() < 2:
+            return s
+        px, py = px[on], py[on]
+        if abs(dx) >= abs(dy):                  # shallow: y as a function of x
+            k, c = np.polyfit(px, py, 1)
+            return Seg((s.a[0], k * s.a[0] + c), (s.b[0], k * s.b[0] + c))
+        k, c = np.polyfit(py, px, 1)
+        return Seg((k * s.a[1] + c, s.a[1]), (k * s.b[1] + c, s.b[1]))
+
+    def trim(s: Seg) -> Seg:
+        """Back in from each end to the last of the line's own ink."""
+        n = int(s.length())
+        on = [k for k in range(n + 1) if inked(_at(s, k / n))] if n else []
+        return Seg(_at(s, on[0] / n), _at(s, on[-1] / n)) if on else s
+
+    lines: list[Seg] = []
+    for x0, y0, x1, y1 in found.reshape(-1, 4):
+        dx, dy = abs(int(x1) - int(x0)), abs(int(y1) - int(y0))
+        if math.degrees(math.atan2(min(dx, dy), max(dx, dy))) < 5:
+            continue                            # a row or a column: the runs have it
+        s = Seg((float(x0), float(y0)), (float(x1), float(y1)))
+        if any(all(_dist_to_line(p, m) <= band for p in (s.a, s.b)) and
+               -0.05 <= _reach(m, s.a) <= 1.05 and -0.05 <= _reach(m, s.b) <= 1.05 for m in lines):
+            continue                            # a piece of a stroke already walked
+        for _ in range(3):                      # a short find is a little off the true slope,
+            u = ((s.b[0] - s.a[0]) / s.length(), (s.b[1] - s.a[1]) / s.length())
+            s = Seg(walk(s.a, (-u[0], -u[1])), walk(s.b, u))
+            s = refit(s)                        # so walk it, fit it to its ink, walk it again
+        s = trim(s)
+        n = int(s.length())
+        if n < 2 * wire or sum(inked(_at(s, k / n)) for k in range(n + 1)) < 0.95 * (n + 1):
+            continue
+        lines = [m for m in lines if not (all(_dist_to_line(p, s) <= band for p in (m.a, m.b)))]
+        lines.append(s)
+    return lines
+
+
+def _reach(s: Seg, p: Point) -> float:
+    """Where along the line through ``s`` the foot of ``p`` falls, past its ends too."""
+    (ax, ay), (bx, by) = s.a, s.b
+    return ((p[0] - ax) * (bx - ax) + (p[1] - ay) * (by - ay)) / ((bx - ax) ** 2 + (by - ay) ** 2)
+
+
+def _dist_to_line(p: Point, s: Seg) -> float:
+    """How far ``p`` is from the infinite line through ``s``."""
+    return abs(_side(p, s))
+
+
+def _along(s: Seg, diagonals: list[Seg], band: float = 2.5) -> bool:
+    """Is this run a step of one of the slanting wires, every pixel of it on one?"""
+    n = max(1, int(s.length()))
+    return all(any(_dist_to_seg(_at(s, k / n), d) <= band for d in diagonals) for k in range(n + 1))
 
 
 def _group_runs(runs: dict[int, list[tuple[int, int]]], axis: int, max_width: int) -> list[Seg]:

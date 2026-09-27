@@ -775,3 +775,33 @@ def test_the_halsted_st_od_agrees_but_for_its_labelled_pads(tmp_path):
     assert rep.checked == rep.drawn == 101, rep.text()
     assert rep.disagreements == 2, rep.text()
     assert "J_IN" in rep.text() and "J_OUT" in rep.text()
+
+
+def test_a_rail_name_in_the_wrong_case_is_not_the_rail():
+    """OCR read the side of the Pocket Comb's rotated "BAT41" as "Vr", beside a diode
+    that sits on VB; matched case-blind, VR was hung on that diode and welded VR to VB.
+    A rail's name is written as the reading spells it, or in capitals."""
+    from sch2kicad.trace import Conductors, Seg, name_nets
+    cond = Conductors([Seg((100, 100), (100, 160)), Seg((300, 100), (300, 160))], [],
+                      t_contacts=True, page=2.0)
+    texts = [{"text": "VR", "box": [90, 70, 110, 90]},       # the flag over the first wire
+             {"text": "Vr", "box": [290, 70, 310, 90]}]      # an OCR misread over the second
+    named = name_nets(cond, texts, ["VR"], {cond.find(0), cond.find(1)})
+    assert cond.find(0) != cond.find(1)                     # not joined by the name
+    assert named == {cond.find(0): {"VR"}}
+    # a sheet that writes the reading's "Vref" in capitals still names it
+    named = name_nets(cond, [{"text": "VREF", "box": [290, 70, 310, 90]}], ["Vref"],
+                      {cond.find(0), cond.find(1)})
+    assert named == {cond.find(1): {"Vref"}}
+
+
+def test_the_pocket_comb_agrees_but_for_its_battery(tmp_path):
+    """Effects Layouts' Pocket Comb, a raster KiCad sheet: every pin traces, VR and VB
+    stay two rails, and the one disagreement is the sheet's own: its battery symbol has
+    the wire drawn straight through the cells, so in ink 9V and GND are one."""
+    c = _ready(tmp_path, "Pocket-Comb-build-doc.pdf", "pocket-comb-effectslayouts.circuit.json", page=2)
+    rep = crosscheck_circuit(c)
+    assert rep.checked == rep.drawn == 268, rep.text()
+    assert rep.disagreements == 2, rep.text()
+    assert not any("VR" in m and "VB" in m for m in rep.merges), rep.text()
+    assert all("9V_IN" in m for m in rep.merges + rep.misnamed), rep.text()

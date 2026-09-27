@@ -140,12 +140,14 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   cross in an X with no dot stay apart, as on a vector page. A sheet drawn light
   on dark is inverted onto white at ingest, and a circuit set sideways on an
   upright page is turned with `ingest --turn`, its vector segments turned with it.
-  All twenty-two sheets,
-  from twelve publishers, are checked against their drawings, and **every one of
-  the 2198 pins they draw is traced**: nineteen agree outright, and seven disagreements stand on the other three — every one of them the drawing's own
+  A rail's name counts only as the reading spells it or in capitals, so OCR
+  making "Vr" of a rotated part number cannot weld two rails.
+  All twenty-three sheets,
+  from thirteen publishers, are checked against their drawings, and **every one of
+  the 2466 pins they draw is traced**: nineteen agree outright, and nine disagreements stand on the other four — every one of them the drawing's own
   doing, never a join the tracer invented: an off-page connector drawn twice, a
   jack whose normalling lug is joined until a plug lifts it, a pair of pads joined
-  only by a label. They are recorded
+  only by a label, a battery with its wire drawn straight through the cells. They are recorded
   rather than silenced by moving a pin. Planted faults — a pin moved to another
   net, a crossing read as a junction, two rails mixed up, a resistor shorted end
   to end, a ground pin read as the supply — are caught.

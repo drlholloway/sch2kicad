@@ -443,3 +443,21 @@ as a vector page. Watch for:
   `power` nets, and put the spare inverters' inputs where they are drawn.
 - The file name in the title block can differ from the title (`35th St OD:Dist`);
   the parts list may carry the file name.
+
+**Effects Layouts** (Pocket Comb) — a KiCad sheet exported as one big raster image,
+placed sideways in the PDF; ingest pulls the image out upright. The layout page
+and the parts list are the cross-checks. Watch for:
+
+- **The drawing rounds values** the parts list gives exactly (4n for 3.9n, 3n for
+  3.3n). Ask; Lane took the parts list's.
+- **The regulator's package is on the layout, not the sheet**: "7805" drawn and
+  listed, but the board has a TO-92 marked O-G-I, a 78L05 (`Regulator_Linear:L78L05_TO92`
+  pins by name `VI`/`VO`/`GND`, footprint the house TO-92). Ask.
+- **BBDs**: KiCad has `Audio:MN3207` and `Timer:MN3102`; the sheet's `V3207`/`V3102`
+  (CoolAudio) have the same pins. The MN3207's two outputs are tied — verify notes it.
+- **Custom ground names** (`GND_PADROUND` under R1): in KiCad that value is a net of
+  its own; build it on GND and say so.
+- **The battery symbol has the wire drawn through it**, so the tracer sees 9V and
+  GND joined; bring it out as 9V and GND pads. The LED's cathode runs to a pad
+  marked `L`: that is SW. A parts-list row with no part (R54) is a stray — check
+  the shopping list's counts.

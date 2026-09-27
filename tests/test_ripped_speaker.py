@@ -421,3 +421,15 @@ def test_a_net_of_nothing_but_pads_is_not_an_erc_error():
     nets = {"J_IN": {"H6.1", "Switch_Connectors1.5"}, "X": {"H9.1", "R1.2"}}
     keep, notes = fold_pads_only(errs, nets, {"H6", "H9", "Switch_Connectors1"})
     assert keep == errs[1:] and len(notes) == 1
+
+
+def test_one_parts_own_outputs_tied_together_are_not_an_erc_error():
+    """The Pocket Comb ties the MN3207's two outputs, 7 and 8, as BBD circuits do. Two
+    different parts' outputs on one net are still a short."""
+    from sch2kicad.verify import fold_tied_outputs
+    errs = ["[pin_to_pin] Pins of type Output and Output are connected — Symbol IC2 Pin 7 [OUT1, Output, Line]; Symbol IC2 Pin 8 [OUT2, Output, Line]",
+            "[pin_to_pin] Pins of type Output and Output are connected — Symbol U1 Pin 1 [~, Output, Line]; Symbol U2 Pin 1 [~, Output, Line]"]
+    nets = {"BBD_OUT": {"IC2.7", "IC2.8", "R17.1"}, "X": {"U1.1", "U2.1"}}
+    pintypes = {"IC2.7": "output", "IC2.8": "output", "U1.1": "output", "U2.1": "output"}
+    keep, notes = fold_tied_outputs(errs, nets, pintypes)
+    assert keep == errs[1:] and len(notes) == 1

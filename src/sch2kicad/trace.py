@@ -1094,8 +1094,12 @@ def name_nets(cond: Conductors, texts: list[dict], names, on_pins: set[int],
     ends = [(p, i) for i, s in enumerate(cond.segs) for p in (s.a, s.b) if cond.find(i) in on_pins]
     hits: list[tuple[str, int]] = []
     for t in texts:
-        name = want.get(str(t["text"]).strip().upper())
-        if not name:
+        s = str(t["text"]).strip()
+        name = want.get(s.upper())
+        # a name is written the way the reading spells it, or in capitals; OCR
+        # making "Vr" of the side of a rotated "BAT41" is neither, and read case-blind
+        # it hung the Pocket Comb's VR on a diode sitting on VB
+        if not name or s not in (name, name.upper()):
             continue
         box = t["box"]
         x0, y0, x1, y1 = box

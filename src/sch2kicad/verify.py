@@ -186,6 +186,30 @@ def fold_open_driven(errors: list[str], nets: dict[str, set[str]],
     return keep, notes
 
 
+def fold_tied_outputs(errors: list[str], nets: dict[str, set[str]],
+                      pintypes: dict[str, str]) -> tuple[list[str], list[str]]:
+    """A BBD's two output pins tied together (the Pocket Comb's MN3207, 7 and 8) are
+    two outputs on one net to KiCad's ERC. Where every output on the net belongs to
+    the one part, the drawing is summing that part's own outputs and the complaint
+    becomes a note; outputs of two parts on one net stay an error."""
+    import re
+    keep: list[str] = []
+    folded: dict[str, list[str]] = {}
+    for e in errors:
+        m = re.match(r"\[pin_to_pin\] Pins of type Output and Output .* Symbol (\S+) Pin (\S+) ", e)
+        if m:
+            node = f"{m.group(1)}.{m.group(2)}"
+            net = next((name for name, nodes in nets.items() if node in nodes), None)
+            outs = sorted(n for n in nets.get(net, ()) if pintypes.get(n) == "output")
+            if outs and len({n.split(".")[0] for n in outs}) == 1:
+                folded[net] = outs
+                continue
+        keep.append(e)
+    notes = [f"{' and '.join(outs)} are tied on {net}, as drawn: one part's outputs summed, "
+             f"which KiCad's ERC reads as two outputs fighting" for net, outs in folded.items()]
+    return keep, notes
+
+
 def fold_pads_only(errors: list[str], nets: dict[str, set[str]],
                    pads: set[str]) -> tuple[list[str], list[str]]:
     """A net that joins nothing but pads is a wire leaving the board and coming back:
@@ -369,6 +393,8 @@ def verify(sch: Path, build_json: Path | None = None, source_image: Path | None 
     rep.notes += driven_notes
     rep.erc_errors, open_notes = fold_open_driven(rep.erc_errors, nets, pintypes)
     rep.notes += open_notes
+    rep.erc_errors, tied_notes = fold_tied_outputs(rep.erc_errors, nets, pintypes)
+    rep.notes += tied_notes
     rep.erc_errors, pad_notes = fold_pads_only(rep.erc_errors, nets, set(meta.get("pads") or ()))
     rep.notes += pad_notes
     # a library symbol with pins off the 50 mil grid makes KiCad flag every pin and the

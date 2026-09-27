@@ -91,7 +91,8 @@ def _cmd_crosscheck(a) -> int:
 
 def _cmd_ingest(a) -> int:
     from .ingest import ingest
-    return ingest(Path(a.input), Path(a.out) if a.out else None, page=a.page, list_only=a.list)
+    return ingest(Path(a.input), Path(a.out) if a.out else None, page=a.page, list_only=a.list,
+                  turn=a.turn)
 
 
 def _cmd_blocks(a) -> int:
@@ -141,6 +142,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-o", "--out", help="work directory (default: <input>.sch2kicad/)")
     p.add_argument("--page", type=int, help="PDF page holding the schematic (1-based)")
     p.add_argument("--list", action="store_true", help="just list the PDF's pages")
+    p.add_argument("--turn", type=int, choices=(0, 90, 180, 270),
+                   help="turn the drawing this many degrees clockwise instead of guessing "
+                        "(a circuit drawn sideways on an upright page)")
     p.set_defaults(fn=_cmd_ingest)
 
     p = sub.add_parser("build", help="circuit.json → KiCad project, then verify")

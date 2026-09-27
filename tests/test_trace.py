@@ -19,14 +19,14 @@ SAMPLES = HERE.parent / "samples"
 CIRCUITS = SAMPLES / "circuits"
 
 
-def _ready(tmp_path, source: str, circuit: str, page: int | None = None):
+def _ready(tmp_path, source: str, circuit: str, page: int | None = None, turn: int | None = None):
     """Ingest a source and put the reading of it in the work directory."""
     from sch2kicad.ingest import ingest
     src = SAMPLES / source
     if not src.exists():
         pytest.skip(f"{source} is third-party and not in the repo")
     work = tmp_path / "work"
-    ingest(src, work, page=page)
+    ingest(src, work, page=page, turn=turn)
     shutil.copy(CIRCUITS / circuit, work / "circuit.json")
     return load(work / "circuit.json")
 
@@ -669,3 +669,87 @@ def test_the_talisman_sheets_agree_with_their_drawings(tmp_path, source, circuit
     rep = crosscheck_circuit(c)
     assert rep.disagreements == 0, rep.text()
     assert rep.checked == rep.drawn == pins, rep.text()
+
+
+def test_a_sheet_drawn_white_on_black_is_read_as_ink_on_paper(tmp_path):
+    """The Christine is drawn in white on black. Every step reads dark pixels as ink,
+    so the page itself was one wire and the black insides of the inverters' bubbles
+    were its junction dots: ingest inverts a page whose paper is dark."""
+    import json
+    c = _ready(tmp_path, "Christine-Build-PDF2.pdf", "christine-tonegod.circuit.json", page=2)
+    assert json.loads((tmp_path / "work" / "ingest.json").read_text())["inverted"] is True
+    rep = crosscheck_circuit(c)
+    assert rep.disagreements == 0, rep.text()
+    assert rep.checked == rep.drawn == 74, rep.text()
+
+
+def test_a_run_into_a_big_dot_stops_a_dots_radius_past_the_wire(tmp_path):
+    """The Christine draws 3 px wires with dots only a little fatter, too thin for the
+    dot finder, and each T into the oscillator's feedback wire runs on to the dot's far
+    rim, 3 px past it — past the 2.8 px (0.75 of a page unit) the tracer allowed,
+    so the oscillator's output came apart in four."""
+    c = _ready(tmp_path, "Christine-Build-PDF2.pdf", "christine-tonegod.circuit.json", page=2)
+    rep = crosscheck_circuit(c)
+    osc = {rep.pins[p][1] for p in ("U1F.15", "OSC.cw", "OSC.wiper", "R6.2")}
+    assert None not in osc and len(osc) == 1, rep.text()
+
+
+def test_a_circuit_drawn_sideways_on_an_upright_page_is_traced_turned(tmp_path):
+    """PCB Guitar Mania set the Acapulco Tone on its side on an upright page whose
+    header reads the right way, and draw its lettering as outlines, so nothing on the
+    page says it is turned; the reader says so with ``turn``. The vector tracer then
+    has to turn its segments the same way, or nothing lands where source.png has it.
+    The page also has a white X from corner to corner, which put BASS and the tone
+    stack's middle on one wire, and ends every pad in a drawn X its lead starts from."""
+    c = _ready(tmp_path, "Acapulco-Tone-1v2-Building-Docs-1.pdf",
+               "acapulco-tone-pcbguitarmania.circuit.json", page=5, turn=270)
+    rep = crosscheck_circuit(c, doc=SAMPLES / "Acapulco-Tone-1v2-Building-Docs-1.pdf")
+    assert rep.disagreements == 0, rep.text()
+    assert rep.checked == rep.drawn == 85, rep.text()
+    assert rep.pins["R4.1"][1] != rep.pins["R5.2"][1], rep.text()
+
+
+def _vector_page(tmp_path, draw):
+    import pymupdf
+    doc = pymupdf.open()
+    page = doc.new_page(width=200, height=200)
+    draw(page)
+    path = tmp_path / "page.pdf"
+    doc.save(path)
+    return path
+
+
+def test_a_white_stroke_is_not_a_wire(tmp_path):
+    from sch2kicad.trace import vector_segments
+
+    def draw(page):
+        page.draw_line((20, 50), (180, 50), color=(0, 0, 0))
+        page.draw_line((20, 20), (180, 180), color=(1, 1, 1))
+    segs, _ = vector_segments(_vector_page(tmp_path, draw), 1, 1.0)
+    assert [(s.a, s.b) for s in segs] == [((20, 50), (180, 50))]
+
+
+def test_an_x_marking_a_pad_is_not_a_wire(tmp_path):
+    """The Acapulco Tone's pads: an X, the lead starting where its strokes cross.
+    Two slanting wires that merely cross somewhere are long, and stay."""
+    from sch2kicad.trace import vector_segments
+
+    def draw(page):
+        page.draw_line((40, 50), (100, 50), color=(0, 0, 0))            # the lead
+        page.draw_line((36, 46), (44, 54), color=(0, 0, 0))             # the X
+        page.draw_line((36, 54), (44, 46), color=(0, 0, 0))
+        page.draw_line((20, 100), (180, 180), color=(0, 0, 0))          # a real crossing
+        page.draw_line((20, 180), (180, 100), color=(0, 0, 0))
+    segs, _ = vector_segments(_vector_page(tmp_path, draw), 1, 1.0)
+    assert len(segs) == 3, segs
+    assert ((40, 50), (100, 50)) in [(s.a, s.b) for s in segs]
+
+
+def test_turned_vector_segments_land_where_the_turned_page_has_them(tmp_path):
+    from sch2kicad.trace import vector_segments
+
+    def draw(page):
+        page.draw_line((10, 20), (60, 20), color=(0, 0, 0))
+    segs, _ = vector_segments(_vector_page(tmp_path, draw), 1, 1.0, rot=270)
+    # turned 270 clockwise (90 anticlockwise), (x, y) goes to (y, 200 - x)
+    assert [(s.a, s.b) for s in segs] == [((20, 190), (20, 140))]

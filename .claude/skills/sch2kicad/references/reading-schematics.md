@@ -397,3 +397,33 @@ wide, black on white, the parts list printed beside the circuit. Watch for:
   rather than 328). Read the lead's row off the pixels.
 - **The flicker LEDs, "RCF"** (Hull Fuzz D1/D2): red candle-flicker LEDs used as
   the bias pair, value as printed. The TL431 is an `ic` with pins `REF`, `A`, `K`.
+
+**The Christine** (The Tone God's design, drawn by Taylor Livingston for musicpcb)
+— a 1200 px PNG in a PDF, **white on black**. Ingest inverts it ("drawn light on
+dark: inverted onto white"); read `source.png`, not the PDF page. Watch for:
+
+- **Junction dots barely fatter than the 3 px wires.** `dots.json` finds almost
+  none of them; read the dots off the picture. The tracer joins these T's anyway.
+- **The 4049's supply is written "Pin 1" / "Pin 8"** at two ends of the sheet, and
+  pin 8 (VSS) goes to ground through the Power Starve pot and 1k, **not** to GND:
+  give it its own net. `supply` takes `VDD`/`VSS`; KiCad's 4049 names pin 1 `VCC`,
+  and either name finds it.
+- **A dot labelled NC** at the end of the oscillator's output wire is just the end
+  of it — no part, no port.
+- Pots are drawn without taper letters; the parts list has them (note them).
+
+**PCB Guitar Mania build docs** (Acapulco Tone) — a vector page, the circuit
+**drawn sideways** on an upright page, its lettering drawn as outlines (so there is
+no exact text, and the header reads upright): ingest can't tell, so give
+`--turn 270` (text reading down the page) or `--turn 90` (reading up). A large
+grey **watermark** is drawn over it — filled shapes, ignored by the tracer; read
+through it. Watch for:
+
+- **Pads end in an X** with the lead starting where its strokes cross (IN, OUT,
+  9V, LED, four GND pads). Put the port at the X's centre.
+- **Stray symbols** with no reference wired to nothing (two JFETs, nets `N$3`,
+  `N$27`, `N$24`) — leftovers in the drawing; don't build them, say so in a note.
+- **The schematic and the parts list can disagree on a part** (Q1 is J201 on the
+  sheet, 2N5457 in the BOM): keep the drawn part, note the other, and check the
+  pinout table for both.
+- The doc's build notes describe a v1.2 PCB trace fault; it is not in the circuit.

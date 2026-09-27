@@ -98,7 +98,8 @@ deliberately unconnected and gets a no-connect flag.
   - Same for a logic chip whose supply box is drawn on its own (`U1` with `VDD`/`VSS`):
     `{"ref": "U1", "unit": "G", "type": "ic", "part": "CD4069",
     "supply": {"VDD": ["VA", 340, 255], "VSS": ["GND", 340, 215]}}`. `V+`/`V-` also
-    find `VDD`/`VCC` and `VSS`/`VEE` pins.
+    find `VDD`/`VCC` and `VSS`/`VEE` pins, and `VDD` finds a pin KiCad calls `VCC`
+    (its 4049) and the other way round.
 - `footprint`, `lib_id` — overrides, rarely needed.
 - `dnp` — true for parts marked do-not-populate / optional.
 

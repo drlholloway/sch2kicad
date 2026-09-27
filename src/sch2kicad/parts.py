@@ -598,7 +598,9 @@ class PartResolver:
         unit = power_units[-1]
         by_name = _pins_by_name(sym, unit)
         pmap, problems = {}, []
-        alias = {"V+": ("VDD", "VCC"), "V-": ("VSS", "VEE", "GND")}
+        # a logic sheet writes VDD where KiCad's 4049 names the pin VCC, and so on
+        alias = {"V+": ("VDD", "VCC"), "V-": ("VSS", "VEE", "GND"),
+                 "VDD": ("VCC",), "VCC": ("VDD",), "VSS": ("VEE", "GND"), "VEE": ("VSS",)}
         for k in part.supply:
             key = _SYNONYMS["opamp"].get(k.lower(), k)
             num = by_name.get(key) or by_name.get(k) or next(

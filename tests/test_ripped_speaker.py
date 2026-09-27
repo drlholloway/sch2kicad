@@ -399,3 +399,14 @@ def test_a_rotary_pole_keeps_its_throws_in_the_order_the_shaft_turns():
     # A-down and B-up go nowhere on the sheet
     assert poles["A"].part.pins["3"].net is None
     assert poles["B"].part.pins["1"].net is None
+
+
+def test_a_logic_chips_vdd_finds_the_pin_kicad_calls_vcc():
+    """The Christine writes its 4049's supply as VDD and VSS; KiCad's 4049 names pin 1
+    VCC. The chip's VSS goes to the Power Starve pot, not ground, so it has to land."""
+    from sch2kicad.circuit import load
+    from sch2kicad.parts import load_profile, resolve_all
+    c = load(HERE.parent / "samples" / "circuits" / "christine-tonegod.circuit.json")
+    res = {r.part.key: r for r in resolve_all(c, load_profile("tht"), SymbolResolver())}
+    assert res["U1G"].problems == []
+    assert res["U1G"].pinmap == {"VDD": "1", "VSS": "8"}

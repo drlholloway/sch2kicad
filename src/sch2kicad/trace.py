@@ -85,7 +85,7 @@ COLOUR_STEPS = 6       # how finely two colours are told apart, per channel
 WIRE_RUN = 20          # only a wire runs this share of the page in a straight line
 HOP_GAP = 3.0          # how wide the break marking a crossing can be, in page units
 DIAG_GAP = 3          # px of paper a slanting wire may cross, where another passes through it
-PAST_END = 0.75        # how far past a wire a run may stop and still have met it
+PAST_END = 0.9         # how far past a wire a run may stop and still have met it
 
 
 @dataclass(frozen=True)
@@ -305,7 +305,8 @@ class Conductors:
         fatter than the wire, so the raster grows the run to the dot's far rim and
         the run ends a dot's radius past the wire it meets. The Theremin draws both
         of its four-way junctions that way, and the two ends land 3.3 and 3.5 px
-        past a wire the tracer will only join within 2.
+        past a wire the tracer will only join within 2. The Christine's heavy dots
+        put three T's 3 px past on a page whose unit is 3.75 px, 0.8 of one.
 
         Crossing the line is the whole guard. A run that stops *short* of another has
         not touched it, however near it comes, and that gap is the one the hop rule
@@ -642,24 +643,47 @@ def _closed(items) -> bool:
     return len(pts) > 3 and abs(pts[0].x - pts[-1].x) < 0.5 and abs(pts[0].y - pts[-1].y) < 0.5
 
 
-def vector_segments(pdf: Path, page_no: int, scale: float) -> tuple[list[Seg], list[Dot]]:
-    """Stroked paths as segments, filled circles as junction dots, in image pixels."""
+def turn_point(p: Point, rot: int, w: float, h: float) -> Point:
+    """Where ``p`` lands once a ``w`` x ``h`` picture is turned ``rot`` degrees clockwise,
+    as ``Image.rotate(-rot, expand=True)`` turns it."""
+    x, y = p
+    if rot == 90:
+        return (h - y, x)
+    if rot == 180:
+        return (w - x, h - y)
+    if rot == 270:
+        return (y, w - x)
+    return (x, y)
+
+
+def vector_segments(pdf: Path, page_no: int, scale: float, rot: int = 0) -> tuple[list[Seg], list[Dot]]:
+    """Stroked paths as segments, filled circles as junction dots, in image pixels.
+
+    ``rot`` is how far ingest turned the page (the Acapulco Tone draws its circuit
+    sideways on an upright page), so the segments land on ``source.png`` as it is.
+    """
     import pymupdf
 
     doc = pymupdf.open(pdf)
     page = doc[page_no - 1]
+    w, h = page.rect.width * scale, page.rect.height * scale
+
+    def at(x: float, y: float) -> Point:
+        return turn_point((x * scale, y * scale), rot, w, h)
     segs: list[Seg] = []
     dots: list[Dot] = []
     for d in page.get_drawings():
         items = d["items"]
         if "f" in (d["type"] or "") and items and all(it[0] in ("c", "qu") for it in items):
             r = d["rect"]                       # a filled blob: a junction dot
-            w, h = (r.x1 - r.x0) * scale, (r.y1 - r.y0) * scale
-            if w <= 12 and h <= 12 and abs(w - h) <= 3:
-                dots.append(Dot((r.x0 + r.x1) / 2 * scale, (r.y0 + r.y1) / 2 * scale, max(w, h) / 2))
+            dw, dh = (r.x1 - r.x0) * scale, (r.y1 - r.y0) * scale
+            if dw <= 12 and dh <= 12 and abs(dw - dh) <= 3:
+                dots.append(Dot(*at((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2), max(dw, dh) / 2))
             continue
         if "s" not in (d["type"] or "") or _closed(items):
             continue                            # a closed path is an outline, not a wire
+        if min(d.get("color") or (0,)) > 0.9:
+            continue    # paper-white: nothing anyone sees (the Acapulco Tone's page-wide X)
         for it in items:
             pts = []
             if it[0] == "l":
@@ -667,12 +691,33 @@ def vector_segments(pdf: Path, page_no: int, scale: float) -> tuple[list[Seg], l
             elif it[0] in ("c", "qu"):          # a curve joins its ends like a chord
                 pts = [it[1], it[-1]]
             for u, v in zip(pts, pts[1:]):
-                a = (u.x * scale, u.y * scale)
-                b = (v.x * scale, v.y * scale)
+                a = at(u.x, u.y)
+                b = at(v.x, v.y)
                 if a != b:
                     segs.append(Seg(a, b))
     doc.close()
-    return segs, dots
+    return _drop_crosses(segs, 12 * scale), dots
+
+
+def _drop_crosses(segs: list[Seg], most: float) -> list[Seg]:
+    """Leave out the X a sheet marks a pad or a no-connect with.
+
+    Two short strokes crossing at both their middles are a mark, not wires: the
+    Acapulco Tone ends each of its pads (IN, 9V, LED) in one, the lead starting at
+    the very point they cross. Kept, the pin read there lands on a stroke that
+    meets nothing, since on a vector page strokes join only end to end.
+    """
+    short = [i for i, s in enumerate(segs)
+             if s.length() <= most and abs(s.a[0] - s.b[0]) > 0.3 * s.length()
+             and abs(s.a[1] - s.b[1]) > 0.3 * s.length()]
+    drop: set[int] = set()
+    for i, j in combinations(short, 2):
+        s, t = segs[i], segs[j]
+        ms, mt = _at(s, 0.5), _at(t, 0.5)
+        if math.dist(ms, mt) <= 0.1 * s.length() and abs(s.length() - t.length()) <= 0.2 * s.length() \
+                and abs(_side(t.a, s)) > 0.3 * s.length():
+            drop |= {i, j}
+    return [s for k, s in enumerate(segs) if k not in drop]
 
 
 # ------------------------------------------------------------------ raster
@@ -1309,7 +1354,8 @@ def crosscheck_circuit(circuit, doc: Path | None = None) -> Crosscheck:
         pdf = doc or Path(meta.get("pdf") or meta.get("input"))
         if not pdf.exists():
             raise FileNotFoundError(f"the vector page needs its PDF; {pdf} is not there")
-        segs, dots = vector_segments(pdf, int(meta["page"]), float(meta.get("dpi", 300)) / 72)
+        segs, dots = vector_segments(pdf, int(meta["page"]), float(meta.get("dpi", 300)) / 72,
+                                     int(meta.get("rotated", 0)))
         t_contacts = False
     else:
         # the positions in a reading are pixels of the upright source.png ingest wrote,

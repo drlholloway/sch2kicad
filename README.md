@@ -137,9 +137,12 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   its stem, and where the sheet draws symbols in another colour that flag is not
   ink the tracer keeps, so a distance is measured across a symbol taken out of
   the picture. A wire drawn on the **slant** is read as one line, so two that
-  cross in an X with no dot stay apart, as on a vector page. All nineteen sheets,
-  from nine publishers, are checked against their drawings, and **every one of
-  the 1938 pins they draw is traced**: seventeen agree outright, and five disagreements stand on the other two — every one of them the drawing's own
+  cross in an X with no dot stay apart, as on a vector page. A sheet drawn light
+  on dark is inverted onto white at ingest, and a circuit set sideways on an
+  upright page is turned with `ingest --turn`, its vector segments turned with it.
+  All twenty-one sheets,
+  from eleven publishers, are checked against their drawings, and **every one of
+  the 2097 pins they draw is traced**: nineteen agree outright, and five disagreements stand on the other two — every one of them the drawing's own
   doing, never a join the tracer invented: an off-page connector drawn twice, a
   jack whose normalling lug is joined until a plug lifts it. They are recorded
   rather than silenced by moving a pin. Planted faults — a pin moved to another

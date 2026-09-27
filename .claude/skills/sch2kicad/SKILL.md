@@ -57,6 +57,9 @@ The work directory (`<input>.sch2kicad/`, or `-o`) holds `source.png`,
 PDFs: exact text) and a `circuit.json` skeleton. Every coordinate is a pixel
 of `source.png`. Ingest turns a sideways drawing upright by reading its text
 ("turned 90° clockwise..."); glance at `grid.png` to confirm before reading.
+A circuit drawn sideways on an upright page (header upright, circuit on its side)
+fools that: re-run with `--turn 270` (its text reads down the page) or `--turn 90`.
+A sheet drawn light on dark is inverted onto white.
 When the doc prints its parts list as a table (PedalPCB, Aion FX), ingest
 reads it into `bom.json` and the skeleton's `"bom"`. Keep it there: verify
 checks the drawing against it. If `circuit.json` already existed, copy the

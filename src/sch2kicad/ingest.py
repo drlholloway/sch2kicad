@@ -49,6 +49,16 @@ def flatten(img: Image.Image) -> Image.Image:
     return img.convert("RGB")
 
 
+def onto_paper(img: Image.Image) -> tuple[Image.Image, bool]:
+    """Dark ink on light paper. A sheet drawn light on dark (the Christine, white
+    on black) is inverted, since every later step reads dark pixels as ink and
+    would otherwise take the whole background for one wire."""
+    gray = np.asarray(img.convert("L"))
+    if np.median(gray) >= 128:
+        return img, False
+    return Image.fromarray(255 - np.asarray(img.convert("RGB"))), True
+
+
 # --------------------------------------------------------------------- PDFs
 
 def pdf_pages(pdf: Path, out: Path) -> list[dict]:
@@ -352,7 +362,8 @@ def make_tiles(img: Image.Image, tiles_dir: Path) -> list[dict]:
 
 # -------------------------------------------------------------------- main
 
-def ingest(inp: Path, out: Path | None = None, page: int | None = None, list_only: bool = False) -> int:
+def ingest(inp: Path, out: Path | None = None, page: int | None = None, list_only: bool = False,
+           turn: int | None = None) -> int:
     inp = inp.resolve()
     out = (out or inp.with_suffix("").parent / (inp.stem + ".sch2kicad")).resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -377,10 +388,25 @@ def ingest(inp: Path, out: Path | None = None, page: int | None = None, list_onl
     else:
         img = flatten(Image.open(inp))
         meta["kind"] = "image"
-    rot = detect_rotation(img, out)
+    img, inverted = onto_paper(img)
+    if inverted:
+        print("  drawn light on dark: inverted onto white")
+    meta["inverted"] = inverted
+    # a drawing set sideways on an upright page (the Acapulco Tone) reads its header
+    # and footer the right way up, and a vector page's lettering drawn as outlines
+    # gives nothing else to read: there the reader says which way it goes
+    rot = detect_rotation(img, out) if turn is None else turn % 360
     if rot:
+        from .trace import turn_point
+        w, h = img.size
         img = img.rotate(-rot, expand=True)
         print(f"  turned {rot}° clockwise so the text reads upright")
+        for t in text:
+            x0, y0, x1, y1 = t["box"]
+            (ax, ay), (bx, by) = turn_point((x0, y0), rot, w, h), turn_point((x1, y1), rot, w, h)
+            t["box"] = [round(min(ax, bx)), round(min(ay, by)), round(max(ax, bx)), round(max(ay, by))]
+            dx, dy = t["dir"]
+            t["dir"] = [round(v, 2) + 0.0 for v in turn_point((dx, dy), rot, 0, 0)]
     meta["rotated"] = rot
     src = out / "source.png"
     img.save(src)

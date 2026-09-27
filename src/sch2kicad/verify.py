@@ -186,6 +186,29 @@ def fold_open_driven(errors: list[str], nets: dict[str, set[str]],
     return keep, notes
 
 
+def fold_pads_only(errors: list[str], nets: dict[str, set[str]],
+                   pads: set[str]) -> tuple[list[str], list[str]]:
+    """A net that joins nothing but pads is a wire leaving the board and coming back:
+    the Halsted St OD carries each jack's line through two pads (H7 to H11) by label.
+    The pads are inputs to KiCad, so no pin drives the net; nothing on the board
+    could, and the complaint becomes a note. A pad on a net with a part stays an error."""
+    import re
+    keep: list[str] = []
+    folded: dict[str, list[str]] = {}
+    for e in errors:
+        m = re.match(r"\[pin_not_driven\].* Symbol (\S+) Pin (\S+) ", e)
+        if m and pads:
+            node = f"{m.group(1)}.{m.group(2)}"
+            net = next((name for name, nodes in nets.items() if node in nodes), None)
+            if net is not None and all(n.split(".")[0] in pads for n in nets[net]):
+                folded.setdefault(net, sorted(nets[net]))
+                continue
+        keep.append(e)
+    notes = [f"{', '.join(nodes)} join only pads (an off-board wire), so nothing on the board drives "
+             f"them; KiCad's ERC says so" for nodes in folded.values()]
+    return keep, notes
+
+
 def compare_nets(expected: dict[str, list[str]], actual: dict[str, set[str]]) -> list[str]:
     """Compare partitions of pins; net names are irrelevant, connectivity is not."""
     diffs: list[str] = []
@@ -346,6 +369,8 @@ def verify(sch: Path, build_json: Path | None = None, source_image: Path | None 
     rep.notes += driven_notes
     rep.erc_errors, open_notes = fold_open_driven(rep.erc_errors, nets, pintypes)
     rep.notes += open_notes
+    rep.erc_errors, pad_notes = fold_pads_only(rep.erc_errors, nets, set(meta.get("pads") or ()))
+    rep.notes += pad_notes
     # a library symbol with pins off the 50 mil grid makes KiCad flag every pin and the
     # short stub joining it to the grid; say that once instead of once per endpoint
     off = [w for w in rep.erc_warnings if w.startswith("[endpoint_off_grid]")]

@@ -753,3 +753,25 @@ def test_turned_vector_segments_land_where_the_turned_page_has_them(tmp_path):
     segs, _ = vector_segments(_vector_page(tmp_path, draw), 1, 1.0, rot=270)
     # turned 270 clockwise (90 anticlockwise), (x, y) goes to (y, 200 - x)
     assert [(s.a, s.b) for s in segs] == [((20, 190), (20, 140))]
+
+
+def test_a_box_drawn_as_a_quad_is_an_outline():
+    """The Halsted St OD's PDF (KiCad printed through macOS) draws boxes as quad items,
+    which the vector reader took for a curve's two ends and failed on: a quad has no
+    x. A quad is four-sided and closed, an outline."""
+    import pymupdf
+    from sch2kicad.trace import _closed
+    q = pymupdf.Quad((60, 80), (120, 80), (60, 140), (120, 140))
+    assert _closed([("qu", q)])
+
+
+def test_the_halsted_st_od_agrees_but_for_its_labelled_pads(tmp_path):
+    """Refresh Audio FX's Halsted St OD: KiCad 10 printed to PDF through macOS, so its
+    lettering is outlines and its boxes quads. Every pin traces; the one disagreement is
+    the sheet's own: each jack line runs between two pads joined only by a label, and
+    only a rail is joined by name."""
+    c = _ready(tmp_path, "halsted-st-od.pdf", "halsted-st-od-refresh.circuit.json", page=1)
+    rep = crosscheck_circuit(c, doc=SAMPLES / "halsted-st-od.pdf")
+    assert rep.checked == rep.drawn == 101, rep.text()
+    assert rep.disagreements == 2, rep.text()
+    assert "J_IN" in rep.text() and "J_OUT" in rep.text()

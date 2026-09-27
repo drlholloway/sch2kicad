@@ -1048,6 +1048,7 @@ def write_build_json(b: "Builder", result: BuildResult, circuit_path: Path, out_
         "moved": result.moved,
         "uncertain": result.uncertain,
         "pinouts": {r.ref: r.pinout for r in b.resolved if r.pinout},
+        "pads": sorted({r.ref for r in b.resolved if r.part.type == "port"}),
         **(extra or {}),
     }
     if b.c.bom:

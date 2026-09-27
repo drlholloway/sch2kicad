@@ -637,9 +637,9 @@ def pin_points(circuit) -> list[Point]:
 
 def _closed(items) -> bool:
     """A path that comes back to where it started: a triangle, a box, a circle."""
-    if any(it[0] == "re" for it in items):
+    if any(it[0] in ("re", "qu") for it in items):     # a rectangle, or any four-sided box
         return True
-    pts = [q for it in items if it[0] in ("l", "c", "qu") for q in (it[1], it[-1])]
+    pts = [q for it in items if it[0] in ("l", "c") for q in (it[1], it[-1])]
     return len(pts) > 3 and abs(pts[0].x - pts[-1].x) < 0.5 and abs(pts[0].y - pts[-1].y) < 0.5
 
 
@@ -688,7 +688,7 @@ def vector_segments(pdf: Path, page_no: int, scale: float, rot: int = 0) -> tupl
             pts = []
             if it[0] == "l":
                 pts = [it[1], it[2]]
-            elif it[0] in ("c", "qu"):          # a curve joins its ends like a chord
+            elif it[0] == "c":                  # a curve joins its ends like a chord
                 pts = [it[1], it[-1]]
             for u, v in zip(pts, pts[1:]):
                 a = at(u.x, u.y)

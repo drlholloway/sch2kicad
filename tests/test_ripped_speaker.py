@@ -410,3 +410,14 @@ def test_a_logic_chips_vdd_finds_the_pin_kicad_calls_vcc():
     res = {r.part.key: r for r in resolve_all(c, load_profile("tht"), SymbolResolver())}
     assert res["U1G"].problems == []
     assert res["U1G"].pinmap == {"VDD": "1", "VSS": "8"}
+
+
+def test_a_net_of_nothing_but_pads_is_not_an_erc_error():
+    """The Halsted St OD carries each jack line out through one pad and back in through
+    another; nothing on the board can drive that net. A pad beside a part still can."""
+    from sch2kicad.verify import fold_pads_only
+    errs = ["[pin_not_driven] Input pin not driven by any Output pins — Symbol H6 Pin 1 [1, Input, Line]",
+            "[pin_not_driven] Input pin not driven by any Output pins — Symbol H9 Pin 1 [1, Input, Line]"]
+    nets = {"J_IN": {"H6.1", "Switch_Connectors1.5"}, "X": {"H9.1", "R1.2"}}
+    keep, notes = fold_pads_only(errs, nets, {"H6", "H9", "Switch_Connectors1"})
+    assert keep == errs[1:] and len(notes) == 1

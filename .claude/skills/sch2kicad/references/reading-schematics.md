@@ -427,3 +427,19 @@ through it. Watch for:
   sheet, 2N5457 in the BOM): keep the drawn part, note the other, and check the
   pinout table for both.
 - The doc's build notes describe a v1.2 PCB trace fault; it is not in the circuit.
+
+**KiCad sheets printed to PDF** (Refresh Audio FX's Halsted St OD) — a clean KiCad
+drawing, but printed through macOS: no text layer, boxes as quads. Ingest reads it
+as a vector page. Watch for:
+
+- **The drawing's own pads** (`H1`-`H12`: IN, OUT, SW, (+), (−), jack pairs, GND).
+  Bring them all over as ports: IN/OUT/SW and one `JI`/`JO` pair land on the 3PDT
+  array, the rest are loose pads. A pair joined only by label (`J_IN` on H7 and
+  H11) shows as one split in the cross-check; that is the drawing, not a misread.
+  Nets of nothing but pads are an off-board wire: verify notes them, not an ERC error.
+- **Check each LED's direction against how the SW pad is switched.** The Halsted
+  drew D2 anode-on-SW, which never lights with a grounded SW; Lane had it flipped.
+- A 4049 on its own rail through a resistor (`VA` → 1k → `U1_VCC`): make both rails
+  `power` nets, and put the spare inverters' inputs where they are drawn.
+- The file name in the title block can differ from the title (`35th St OD:Dist`);
+  the parts list may carry the file name.

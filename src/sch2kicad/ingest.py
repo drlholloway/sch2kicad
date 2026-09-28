@@ -111,9 +111,15 @@ def pdf_schematic(pdf: Path, page_no: int, out: Path) -> tuple[Image.Image, dict
         info = doc.extract_image(xref)
         img = flatten(Image.open(__import__("io").BytesIO(info["image"])))
         # the placement matrix only says how the image sits on the page (often turned
-        # to fit a portrait page); the pixels themselves are what the author drew
+        # to fit a portrait page); the pixels themselves are what the author drew,
+        # unless the matrix mirrors them (Pedal Parts' ICL stores its sheet upside
+        # down in a mirror and flips it back on the page): then flip them back here,
+        # and whatever turn is left the text finds as usual
+        mirrored = m.a * m.d - m.b * m.c < 0
+        if mirrored:
+            img = img.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
         meta.update({"kind": "embedded-image", "xref": xref,
-                     "matrix": [m.a, m.b, m.c, m.d, m.e, m.f]})
+                     "matrix": [m.a, m.b, m.c, m.d, m.e, m.f], "mirrored": mirrored})
         return img, meta, text
     # vector page: render it, and keep its text with exact boxes
     dpi = 300
@@ -385,6 +391,8 @@ def ingest(inp: Path, out: Path | None = None, page: int | None = None, list_onl
             return 0
         img, pmeta, text = pdf_schematic(inp, page, out)
         meta.update(pmeta)
+        if pmeta.get("mirrored"):
+            print("  stored mirrored in the PDF: flipped back")
     else:
         img = flatten(Image.open(inp))
         meta["kind"] = "image"

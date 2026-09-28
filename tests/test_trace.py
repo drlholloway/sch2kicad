@@ -835,3 +835,39 @@ def test_the_hot_mett_agrees_with_its_drawing(tmp_path):
     rep = crosscheck_circuit(c)
     assert rep.checked == rep.drawn == 117, rep.text()
     assert rep.disagreements == 0, rep.text()
+
+
+def test_a_sheet_stored_mirrored_in_its_pdf_is_flipped_back(tmp_path):
+    """A PDF can store an image upside down in a mirror and flip it back with its
+    placement matrix (Pedal Parts' ICL): the pixels as stored read 6 for 9 and put a
+    DIP's notch at the bottom, so ingest undoes a mirroring placement."""
+    import io
+    import numpy as np
+    import pymupdf
+    from PIL import Image
+    from sch2kicad.ingest import pdf_schematic
+    stored = Image.new("L", (800, 600), 255)
+    stored.paste(0, (0, 0, 800, 100))                 # a black band along the top as stored
+    buf = io.BytesIO()
+    stored.save(buf, "PNG")
+    doc = pymupdf.open()
+    page = doc.new_page(width=800, height=600)
+    xref = page.insert_image(page.rect, stream=buf.getvalue())
+    name = [im[7] for im in page.get_images(full=True) if im[0] == xref][0]
+    # draw it mirrored top to bottom: the band shows along the bottom of the page
+    doc.update_stream(page.get_contents()[0], f"q 800 0 0 -600 0 600 cm /{name} Do Q".encode())
+    pdf = tmp_path / "mirrored.pdf"
+    doc.save(pdf)
+    img, meta, _ = pdf_schematic(pdf, 1, tmp_path)
+    ink = np.array(img.convert("L")) < 128
+    assert meta["mirrored"] is True
+    assert ink[-50:].all() and not ink[:50].any()
+
+
+def test_the_icl_agrees_with_its_drawing(tmp_path):
+    """Pedal Parts' Invading Cannibal Ladybirds, the Hot Mett's circuit drawn again:
+    flipped back out of its mirror, every pin traces and the reading agrees outright."""
+    c = _ready(tmp_path, "ICL.pdf", "icl-pedalparts.circuit.json", page=4)
+    rep = crosscheck_circuit(c)
+    assert rep.checked == rep.drawn == 119, rep.text()
+    assert rep.disagreements == 0, rep.text()

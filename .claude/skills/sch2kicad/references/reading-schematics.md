@@ -479,3 +479,16 @@ red X marks, exported as one raster image. Watch for:
   backwards). Ask; to swap, keep each wire where it is drawn and trade which end
   is `cw` and which `ccw`, so the cross-check still agrees.
 - A regulator drawn as a 7805 may be a 78L05 in TO-92: look at the board.
+
+**Pedal Parts / FuzzDog** (ICL, the Invading Cannibal Ladybirds) — a raster sheet
+placed rotated *and mirrored* on the page. Watch for:
+
+- **The stored image is mirrored.** Ingest flips it back (`"mirrored": true` in
+  `ingest.json`). If a sheet still reads 6 for 9, L for 7, or a DIP's notch sits at
+  the bottom, it is mirrored: stop and fix ingest, don't read it backwards.
+- **Pots have their lugs numbered 1 and 3**, with a small arrow by lug 1 pointing
+  towards lug 3: lug 3 is clockwise, on every pot.
+- Rails are flags (`+9V` circle with a plus, `VCC` open circle); the only pads are
+  IN, OUT and `+V` (before the series 1N5817). Bring out a GND pad for the jack.
+- `R2 Empty` is a DNP slot: include it with `"dnp": true`.
+- A regulator drawn `78XX` is the parts list's (78L05 here).

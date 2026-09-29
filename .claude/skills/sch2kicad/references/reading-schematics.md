@@ -500,8 +500,8 @@ from a technical manual, with DOD's own bill of materials on the next pages. Wat
   0805 ceramic, `.0068J` a 5% film cap, `1M50E1` a 1uF 50V electrolytic, `.47 T1`
   a tantalum, `100K402141` a pot. Write the value the BOM's description gives
   (`.047uF`, `W100K`) and say so in a note; the stock number is not a value.
-- **Pot tapers are letters in the BOM**, `"W"` and `"C"`, not on the sheet. A W
-  taper is DOD's own; keep the letter and ask what it is before choosing a part.
+- **Pot tapers are letters in the BOM**, `"W"` and `"C"`, not on the sheet. W is a
+  standard taper letter like A, B and C; keep it in the value (`W100K`).
 - **Pin names are written inside the chips** (`GND` on the NE570 and both BBD
   chips). The crosscheck ignores words between a chip's own pins; the reading must
   still give each pin its own net.

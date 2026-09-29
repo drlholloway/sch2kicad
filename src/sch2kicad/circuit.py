@@ -264,7 +264,7 @@ def _action_of(p: dict) -> str:
 
 
 def parse_value(v: str) -> float | None:
-    """'4k7' → 4700, '100nF' → 1e-7, '2.2uF' → 2.2e-6, 'A100K' → 1e5, '10' → 10."""
+    """'4k7' → 4700, '100nF' → 1e-7, '2.2uF' → 2.2e-6, 'A100K' → 1e5, '10' → 10, '.047uF' → 4.7e-8."""
     s = v.strip().replace(" ", "").replace("Ω", "").replace("ohm", "")
     s = re.sub(r"^[ABCW](?=\d)", "", s)          # pot taper prefix
     s = re.sub(r"(?<=[\dkKmM])[ABCW]$", "", s)    # taper suffix (100kB, 50KA)
@@ -272,7 +272,8 @@ def parse_value(v: str) -> float | None:
     m = re.fullmatch(r"(\d+)([pnuµmkKMGrR])(\d+)", s)   # RKM: 4k7, 2M2, 4n7
     if m:
         return float(f"{m.group(1)}.{m.group(3)}") * _MULT[m.group(2)]
-    m = re.fullmatch(r"(\d+(?:\.\d+)?)([pnuµmkKMGrR]?)", s)
+    # a bare leading point is how US sheets write a cap: DOD's .047uF, .0068uF
+    m = re.fullmatch(r"(\d+(?:\.\d+)?|\.\d+)([pnuµmkKMGrR]?)", s)
     if m:
         return float(m.group(1)) * _MULT[m.group(2)]
     return None

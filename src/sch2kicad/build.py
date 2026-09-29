@@ -1049,6 +1049,8 @@ def write_build_json(b: "Builder", result: BuildResult, circuit_path: Path, out_
         "uncertain": result.uncertain,
         "pinouts": {r.ref: r.pinout for r in b.resolved if r.pinout},
         "pads": sorted({r.ref for r in b.resolved if r.part.type == "port"}),
+        # the supplies the reading declares, so a chip's GND pin on one reads as meant
+        "rails": sorted(n for n in b.c.all_net_names() if b.c.net_kind(n) == "power"),
         **(extra or {}),
     }
     if b.c.bom:

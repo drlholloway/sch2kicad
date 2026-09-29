@@ -433,3 +433,15 @@ def test_one_parts_own_outputs_tied_together_are_not_an_erc_error():
     pintypes = {"IC2.7": "output", "IC2.8": "output", "U1.1": "output", "U2.1": "output"}
     keep, notes = fold_tied_outputs(errs, nets, pintypes)
     assert keep == errs[1:] and len(notes) == 1
+
+
+def test_a_chips_gnd_pin_on_a_declared_rail_is_not_an_erc_warning():
+    """DOD's FX96 runs the MN3005's pin called GND on a filtered +9V (the chip is
+    P-channel); the reading says V_BBD is a power rail, so that was meant. A GND pin
+    on a signal net is still worth the warning."""
+    from sch2kicad.verify import fold_ground_on_rail
+    warns = ["[ground_pin_not_ground] Pin GND not connected to ground net — Symbol U4 Pin 1 [GND, Power input, Line]",
+             "[ground_pin_not_ground] Pin GND not connected to ground net — Symbol U9 Pin 4 [GND, Power input, Line]"]
+    expected = {"V_BBD": ["U4.1", "R25.2"], "N_7": ["U9.4", "R1.1"]}
+    keep, notes = fold_ground_on_rail(warns, expected, {"V_BBD", "+9V"})
+    assert keep == warns[1:] and len(notes) == 1 and "V_BBD" in notes[0]

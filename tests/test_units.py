@@ -49,6 +49,11 @@ def test_values():
     assert parse_value("10") == approx(10)
     assert parse_value("4n7") == approx(4.7e-9)
     assert parse_value("TL072") is None
+    # DOD and most US sheets drop the leading zero; before, ".10uF" and ".1uF" could
+    # not be compared at all, and ".047uF" matched its parts-list row only as text
+    assert parse_value(".047uF") == approx(4.7e-8)
+    assert parse_value(".10uF") == parse_value(".1uF") == approx(1e-7)
+    assert parse_value(".") is None
 
 
 def test_pinout_table():

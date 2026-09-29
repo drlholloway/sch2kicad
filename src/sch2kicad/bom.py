@@ -16,6 +16,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from .circuit import parse_action, parse_value
+from .parts import _CMOS4000
 
 _REF_HEADS = {"LOCATION", "PART"}
 _HEADS = {"VALUE": "value", "TYPE": "type", "NOTES": "notes"}
@@ -267,7 +268,12 @@ def same_value(ptype: str, drawn: str, listed: str, listed_type: str = "") -> bo
         return not (ta and tb and ta != tb)
     if ptype in PART_TYPES:
         a, b = _norm(drawn), _norm(listed)
-        return bool(a and b and (a in b or b in a))    # 4558 / RC4558, TL062P / TL062
+        if a and b and (a in b or b in a):             # 4558 / RC4558, TL062P / TL062
+            return True
+        # a 4000-series chip under any maker's prefix and grade: DOD list the
+        # CD4007 as 4007A
+        ma, mb = _CMOS4000.match(a), _CMOS4000.match(b)
+        return bool(ma and mb and ma.group(1) == mb.group(1))
     if ptype == "led":                                 # "3mm red LED" / "3mm LED"
         a, b = set(re.findall(r"[A-Z0-9]+", drawn.upper())), set(re.findall(r"[A-Z0-9]+", listed.upper()))
         return True if a and b and (a <= b or b <= a) else None

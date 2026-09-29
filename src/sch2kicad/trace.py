@@ -626,6 +626,33 @@ def _drawn_apart(pts: list[Point], gap: float) -> list[list[Point]]:
     return out
 
 
+def _not_pin_names(texts: list[dict], circuit) -> list[dict]:
+    """Leave out words written inside a chip, between its own pins.
+
+    A chip drawn as a box names its pins inside it, and ``GND`` or ``VDD`` there is
+    the pin's name, not a rail's flag. DOD's FX96 names the NE570's ground pin and
+    both BBD chips' ``GND`` that way; read as flags, each hung ground on whatever wire
+    left the pin, and the MN3005's ``GND`` pin sits on the filtered +9V, so the check
+    welded that supply to ground. Only an ``ic`` with a box's worth of pins counts:
+    an op-amp's triangle has its supply flags outside it.
+    """
+    boxes = []
+    for p in circuit.parts:
+        pts = [pin.at for pin in p.pins.values() if pin.at]
+        if p.type == "ic" and len(pts) >= 4:
+            xs, ys = [q[0] for q in pts], [q[1] for q in pts]
+            if max(xs) > min(xs) and max(ys) > min(ys):
+                boxes.append((min(xs), min(ys), max(xs), max(ys)))
+
+    def inside(t) -> bool:
+        # a name sits level with its own pin, and the outermost pins are the box's
+        # edge, so the word may stand half its own size past them
+        x0, y0, x1, y1 = t["box"]
+        c, hw, hh = ((x0 + x1) / 2, (y0 + y1) / 2), (x1 - x0) / 2, (y1 - y0) / 2
+        return any(b[0] - hw <= c[0] <= b[2] + hw and b[1] - hh <= c[1] <= b[3] + hh for b in boxes)
+    return [t for t in texts if not inside(t)]
+
+
 def pin_points(circuit) -> list[Point]:
     pts = [pin.at for p in circuit.parts for pin in p.pins.values() if pin.at]
     pts += [at for p in circuit.parts for at in p.supply_at.values() if at]
@@ -1409,6 +1436,6 @@ def crosscheck_circuit(circuit, doc: Path | None = None) -> Crosscheck:
     # only rails: a signal's name may be written anywhere, or read wrong off pixels,
     # and a rail is the only net whose pins the drawing joins by name alone
     rails = [n for n in circuit.all_net_names() if circuit.net_kind(n) in ("power", "ground")]
-    named = name_nets(cond, read_text(work), rails, on_pins, ink)
+    named = name_nets(cond, _not_pin_names(read_text(work), circuit), rails, on_pins, ink)
     return crosscheck(circuit, cond, named, pin_tol=pin_tol, min_net=min_net,
                       reach=BODY_REACH * touch)

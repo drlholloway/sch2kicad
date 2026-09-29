@@ -233,6 +233,31 @@ def fold_pads_only(errors: list[str], nets: dict[str, set[str]],
     return keep, notes
 
 
+def fold_ground_on_rail(warnings: list[str], expected: dict[str, list[str]] | None,
+                        rails: set[str]) -> tuple[list[str], list[str]]:
+    """A chip whose pin is called GND but sits on a supply the reading declares.
+
+    The MN3005 and MN3101 are P-channel parts: their pin named GND is the top rail,
+    so DOD's FX96 runs it on a filtered +9V and ties VDD to ground. KiCad's ERC warns
+    that a ground pin is not on ground. Where circuit.json says the net is a power
+    rail, that was read on purpose, and the warning becomes a note."""
+    import re
+    keep: list[str] = []
+    folded: dict[str, list[str]] = {}
+    for w in warnings:
+        m = re.match(r"\[ground_pin_not_ground\].* Symbol (\S+) Pin (\S+) ", w)
+        if m and expected:
+            node = f"{m.group(1)}.{m.group(2)}"
+            net = next((name for name, nodes in expected.items() if node in nodes), None)
+            if net in rails:
+                folded.setdefault(net, []).append(node)
+                continue
+        keep.append(w)
+    notes = [f"{' and '.join(nodes)} {'are' if len(nodes) > 1 else 'is'} a pin named GND on the {net} "
+             f"rail, as drawn (a P-channel chip's top supply)" for net, nodes in folded.items()]
+    return keep, notes
+
+
 def compare_nets(expected: dict[str, list[str]], actual: dict[str, set[str]]) -> list[str]:
     """Compare partitions of pins; net names are irrelevant, connectivity is not."""
     diffs: list[str] = []
@@ -397,6 +422,8 @@ def verify(sch: Path, build_json: Path | None = None, source_image: Path | None 
     rep.notes += tied_notes
     rep.erc_errors, pad_notes = fold_pads_only(rep.erc_errors, nets, set(meta.get("pads") or ()))
     rep.notes += pad_notes
+    rep.erc_warnings, rail_notes = fold_ground_on_rail(rep.erc_warnings, expected, set(meta.get("rails") or ()))
+    rep.notes += rail_notes
     # a library symbol with pins off the 50 mil grid makes KiCad flag every pin and the
     # short stub joining it to the grid; say that once instead of once per endpoint
     off = [w for w in rep.erc_warnings if w.startswith("[endpoint_off_grid]")]

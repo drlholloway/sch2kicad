@@ -54,6 +54,10 @@ TL071 = "Amplifier_Operational:TL071"
 LM13700 = "sch2kicad:LM13700"    # bias current out of the bottom, not beside the output
 # KiCad ships no CD4517; the symbol travels with the project
 CD4517 = "sch2kicad:CD4517"
+# nor an NE570 compandor or a CD4007 (DOD FX96): drawn the way the datasheets and
+# DOD draw them, halves and pairs as units
+NE570 = "sch2kicad:NE570"
+CD4007 = "sch2kicad:CD4007"
 # TI's SOT-23 (DBZ) TL431 is K-REF-A on pads 1-2-3; pins are given by name, so
 # the TO-92 reading builds unchanged
 TL431 = "Reference_Voltage:TL431DBZ"

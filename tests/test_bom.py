@@ -22,6 +22,10 @@ def test_same_value():
     assert bom.same_value("opamp_dual", "4558", "RC4558")
     assert bom.same_value("npn", "2N5089", "2N5089")
     assert bom.same_value("npn", "2N5089", "MPS2222") is False
+    assert bom.same_value("ic", "CD4007", "4007A")                     # DOD's spelling of a CD4007
+    assert bom.same_value("ic", "CD4069UBE", "MC14069")
+    assert bom.same_value("ic", "CD4007", "4017") is False
+    assert bom.same_value("capacitor", ".1uF", ".10uF")                 # a US sheet's leading point
     assert bom.same_value("resistor", "10K", "10K-22K") is None       # a range: can't tell
     assert bom.same_value("led", "3mm red LED", "3mm LED")            # words of one in the other
     assert bom.same_value("led", "3mm red LED", "5mm") is None

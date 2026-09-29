@@ -492,3 +492,29 @@ placed rotated *and mirrored* on the page. Watch for:
   IN, OUT and `+V` (before the series 1N5817). Bring out a GND pad for the jack.
 - `R2 Empty` is a DNP slot: include it with `"dnp": true`.
 - A regulator drawn `78XX` is the parts list's (78L05 here).
+
+**DOD service sheets** (FX96 Echo FX) — OrCAD in vectors, the factory schematic
+from a technical manual, with DOD's own bill of materials on the next pages. Watch for:
+
+- **Values are stock codes.** `10K-7` is a 10K 0805 resistor, `.047MD7` a .047uF
+  0805 ceramic, `.0068J` a 5% film cap, `1M50E1` a 1uF 50V electrolytic, `.47 T1`
+  a tantalum, `100K402141` a pot. Write the value the BOM's description gives
+  (`.047uF`, `W100K`) and say so in a note; the stock number is not a value.
+- **Pot tapers are letters in the BOM**, `"W"` and `"C"`, not on the sheet. A W
+  taper is DOD's own; keep the letter and ask what it is before choosing a part.
+- **Pin names are written inside the chips** (`GND` on the NE570 and both BBD
+  chips). The crosscheck ignores words between a chip's own pins; the reading must
+  still give each pin its own net.
+- **P-channel BBDs**: the MN3005's and MN3101's pin called GND is their top supply,
+  fed from +9V (through R25 and D3 here), and their VDD pins go to ground. Declare
+  those supplies as power nets; verify then reads the GND pin as meant.
+- **Electronic bypass.** A CD4007 latch toggled by a board-mounted soft-touch
+  switch (`SW440083`, 4 pins in two pairs) switches JFETs; there is no 3PDT. Bring
+  the switch out as a pad for a momentary footswitch to ground.
+- **Jacks live on another board** through a header (`H1A`..`H1E`: input, ground,
+  battery, unused, output) and a switched barrel jack `J1`. Build them as ports.
+- Signal can run **right to left**: the reconstruction filter's op-amps are drawn
+  mirrored, output on the left. Read each triangle's pin numbers, not its side.
+- **NE570 halves** are drawn as boxes with the datasheet's names (INV, R3, OUT,
+  THD, DG, RIN, RC); `sch2kicad:NE570` matches them. `4007A` is the CD4007
+  (`sch2kicad:CD4007`, its three pairs as units by pin number).

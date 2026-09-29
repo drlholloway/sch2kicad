@@ -77,10 +77,11 @@ Aion FX) is in
   pad array for IN/OUT/GND. A transistor in another lead order gets the stock
   KiCad symbol for that order on the same TO-92 footprint. Other ICs (TL071,
   the 4000-series logic) use the stock KiCad symbol on a DIP package picked by
-  pin count. Two come from the tool's own library
+  pin count. Four come from the tool's own library
   `src/sch2kicad/data/symbols/sch2kicad.kicad_sym`, copied into the built
   project with a `sym-lib-table` so they still resolve when it is opened: the
-  **CD4517**, which KiCad has no symbol for, and the **LM13700**, which it
+  **CD4517**, the **NE570** compandor and the **CD4007** (its two pairs and
+  inverter as three units), which KiCad has no symbols for, and the **LM13700**, which it
   does — but KiCad's brings the amplifier bias current out beside the output,
   so the wire from the LFO has to cross the signal it controls. Ours takes it
   out of the base of the triangle, the way the datasheet draws it, and numbers
@@ -146,9 +147,11 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   wires': they are drawn in it (an Eagle sheet's red parts outran its green wires).
   A PDF that stores its image mirrored and flips it back on the page is flipped
   back at ingest, so digits read the right way and a DIP's notch sits on top.
-  All twenty-five sheets,
-  from fifteen publishers, are checked against their drawings, and **every one of
-  the 2702 pins they draw is traced**: twenty-one agree outright, and nine disagreements stand on the other four — every one of them the drawing's own
+  A word written inside a chip, between its own pins, is that pin's name and not a
+  rail's flag: DOD's FX96 writes `GND` inside both BBD chips, whose GND pin runs
+  on a filtered +9V. All twenty-six sheets,
+  from sixteen publishers, are checked against their drawings, and **every one of
+  the 2995 pins they draw is traced**: twenty-two agree outright, and nine disagreements stand on the other four — every one of them the drawing's own
   doing, never a join the tracer invented: an off-page connector drawn twice, a
   jack whose normalling lug is joined until a plug lifts it, a pair of pads joined
   only by a label, a battery with its wire drawn straight through the cells. They are recorded

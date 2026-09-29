@@ -871,3 +871,30 @@ def test_the_icl_agrees_with_its_drawing(tmp_path):
     rep = crosscheck_circuit(c)
     assert rep.checked == rep.drawn == 119, rep.text()
     assert rep.disagreements == 0, rep.text()
+
+
+def test_the_fx96_agrees_with_its_drawing(tmp_path):
+    """DOD's FX96 service sheet, OrCAD in vectors: every pin traces and the reading
+    agrees outright, with the MN3005's and MN3101's GND pins on their own +9V rails."""
+    c = _ready(tmp_path, "DOD-FX96.pdf", "fx96-dod.circuit.json", page=1)
+    rep = crosscheck_circuit(c)
+    assert rep.checked == rep.drawn == 293, rep.text()
+    assert rep.disagreements == 0, rep.text()
+
+
+def test_a_pin_name_inside_a_chip_is_not_a_rail_flag(tmp_path, monkeypatch):
+    """The FX96 writes GND inside the NE570 and both BBD chips as pin names. Read as
+    ground flags, they hang ground on the wire leaving each pin, and the MN3005's
+    GND pin is on the filtered +9V, so the check welds that supply to ground."""
+    from sch2kicad import trace
+    c = _ready(tmp_path, "DOD-FX96.pdf", "fx96-dod.circuit.json", page=1)
+    texts = trace.read_text(c.path.parent)
+    kept = trace._not_pin_names(texts, c)
+    dropped = [t["text"] for t in texts if t not in kept]
+    assert dropped.count("GND") == 3
+    assert [t["text"] for t in kept].count("+9V") == [t["text"] for t in texts].count("+9V")
+    # the guard's witness: without it the same reading disagrees with the drawing
+    monkeypatch.setattr(trace, "_not_pin_names", lambda texts, circuit: texts)
+    rep = crosscheck_circuit(c)
+    assert rep.disagreements > 0
+    assert "V_BBD" in rep.text() and "GND" in rep.text()

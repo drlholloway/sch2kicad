@@ -31,6 +31,18 @@ def test_same_value():
     assert bom.same_value("led", "3mm red LED", "5mm") is None
 
 
+def test_a_taper_written_as_a_word():
+    """Deadastronaut's parts list writes tapers as words ("1M LOG") and letters
+    ("47kB") on one page, and the Abductor II's sheet writes "2M lin". The word
+    is the taper; read as nothing, the value could not be compared at all."""
+    assert bom.same_value("pot", "A1M", "1M LOG")
+    assert bom.same_value("pot", "B1M", "1M LOG") is False
+    assert bom.same_value("pot", "B2M", "2M lin")
+    assert bom.same_value("pot", "A100k", "100k Linear") is False
+    assert bom.same_value("pot", "C10K", "10k rev log")
+    assert bom.same_value("pot", "A10K", "10k rev log") is False
+
+
 PARTS = {
     "R1": {"value": "2M2", "type": "resistor"},
     "C1": {"value": "100n", "type": "capacitor"},

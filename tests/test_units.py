@@ -207,3 +207,27 @@ def test_an_on_off_toggle_lands_on_the_house_spdt():
     for profile in ("tht", "smd"):
         assert _footprint_rule(load_profile(profile), "switch_spst", sw) == \
             "2025_PedalDivision_Switches:Mini Switch SPDT"
+
+
+def test_with_no_true_bypass_the_jacks_get_their_own_pads():
+    """The Abductor II switches its delay send with a JFET and keeps its jacks wired
+    straight to the board: no 3PDT. On the 3PDT pad array its IN and OUT would sit
+    among pads for a switch nobody fits, so they get pads of their own."""
+    from sch2kicad.build import _port_parts
+    from sch2kicad.circuit import from_dict
+    from sch2kicad.parts import load_profile
+    from sch2kicad.symlib import SymbolResolver
+
+    def pads(true_bypass: bool) -> dict[str, str]:
+        circuit = from_dict({"schema": "sch2kicad/circuit@1", "name": "t", "parts": [],
+                                "true_bypass": true_bypass,
+                                "ports": [{"name": "IN", "net": "IN", "at": [0, 0]},
+                                          {"name": "OUT", "net": "OUT", "at": [50, 0]}]})
+        ports, problems = _port_parts(circuit, load_profile("tht"), SymbolResolver())
+        assert not problems
+        return {r.part.pins["1"].net: r.lib_id for r in ports if r.part.pins["1"].net}
+
+    array = "2025_PedalDivision_SignalPads:3pdt_Switch_Connectors+Jacks"
+    assert pads(True) == {"IN": array, "OUT": array, "GND": array}
+    assert pads(False) == {"IN": "2025_PedalDivision_SignalPads:Small_Pad_Round",
+                           "OUT": "2025_PedalDivision_SignalPads:Small_Pad_Round"}

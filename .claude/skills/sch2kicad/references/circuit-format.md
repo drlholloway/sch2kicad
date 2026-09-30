@@ -117,6 +117,10 @@ Unlisted nets are signals. List only what needs a kind:
 - `ports` — off-board connections (`IN`/`INPUT`, `OUT`, `+9V`, `LED+`, `SW`...): the
   small squares/circles the wires run to. `at` is the connection point. IN/OUT land
   on the 3PDT pad array; others get their own pad.
+- `true_bypass` — `false` when no 3PDT switches the jacks: a buffered or
+  JFET-switched bypass, where the footswitch only switches a control line. IN and OUT
+  then get pads of their own, with no 3PDT array. Bring the footswitch out as a pad
+  per lug it uses, named for the lug (`FOOTSW 2`).
 - `texts` — annotations that are not nets: measured voltages (`"kind": "voltage"`),
   remarks next to parts. Knob names go in `label`, not here.
 - `notes` — the NOTES block, one string per note.

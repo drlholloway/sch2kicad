@@ -243,6 +243,21 @@ def _taper(v: str) -> str:
     return (m.group(1) or m.group(2)) if m else ""
 
 
+# a taper written as a word, as parts lists and some sheets do (Deadastronaut's
+# "1M LOG", "2M lin"): log is A, lin is B, reverse log is C
+_TAPER_WORDS = [(re.compile(r"\s*\b(?:rev(?:erse)?\.?\s*log|anti-?log)$", re.I), "C"),
+                (re.compile(r"\s*\b(?:log|audio)$", re.I), "A"),
+                (re.compile(r"\s*\b(?:lin|linear)$", re.I), "B")]
+
+
+def _taper_word(v: str) -> str:
+    """'1M LOG' → '1MA', the taper as the letter the value parser reads."""
+    for word, letter in _TAPER_WORDS:
+        if word.search(v.strip()):
+            return word.sub("", v.strip()) + letter
+    return v
+
+
 def same_value(ptype: str, drawn: str, listed: str, listed_type: str = "") -> bool | None:
     """Whether a drawn value and a listed one agree; None when they can't be compared."""
     if _norm(drawn) == _norm(listed):
@@ -259,6 +274,7 @@ def same_value(ptype: str, drawn: str, listed: str, listed_type: str = "") -> bo
             return None
         return a == b
     if ptype in VALUE_TYPES:
+        drawn, listed = _taper_word(drawn), _taper_word(listed)
         a, b = parse_value(drawn), parse_value(listed)
         if a is None or b is None:
             return None

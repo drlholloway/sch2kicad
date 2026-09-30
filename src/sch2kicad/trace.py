@@ -1185,6 +1185,77 @@ def raster_dots(work: Path) -> list[Dot]:
     return [Dot(d["x"], d["y"], d["d"] / 2) for d in json.loads(p.read_text())]
 
 
+def pin_to_pin(image: Path, dots: list[Dot], segs: list[Seg], touch: float) -> list[Seg]:
+    """Where a sheet joins parts with no wire the tracer can see, a conductor of its own.
+
+    Eagle draws its parts red and its wires green, and joins two parts pin to pin:
+    the leads meet, and all the green there is of it is a junction dot between two
+    red leads, or a stub of wire a few pixels long between a lead and a flag. The
+    tracer keeps only the wire colour and only runs as long as a wire, so each pin
+    there stands on nothing. The Abductor II joins its input resistor, bias resistor
+    and op-amp input with a dot, and reaches half its ground flags by 6 px stubs.
+
+    Only ink in the wire colour that ink of another colour leaves: from a dot's rim,
+    or from both ends of a stub. On a sheet drawn in one colour a part's leads are
+    wire ink, so nothing qualifies — the Gnomeratron's "dots" with no wire at them
+    are the heavy strokes of its title; ingest finds the odd dot in a part's own ink,
+    three in 22358's blue zigzags and plates; and a letter in the wire colour meets
+    nothing of another colour at both ends of a stroke.
+
+    And only a dot no wire in ``segs`` comes within ``touch`` of: the pins by one
+    that does are that wire's already, and a conductor of the dot's own, a stroke
+    short of it, would take them off it. ``segs`` is what the tracer kept, not all it
+    found: each PT2399 on the Abductor ties its ground pins with a wire along its own
+    pin row, which is dropped as the chip's body, and the dots at its ends are then
+    all there is of it.
+    """
+    import numpy as np
+    from PIL import Image
+
+    with Image.open(image) as im:
+        rgb = np.asarray(im.convert("RGB")).astype(np.int16)
+    wire_len = max(5, round(rgb.shape[1] / PAGE_UNIT))
+    wire = wire_ink(rgb, wire_len, dots=dots)
+    other = ((255 - rgb).max(axis=2) >= 255 - 170) & ~wire
+    h, w = wire.shape
+
+    def meets_other(x: float, y: float, r: int = 2) -> bool:
+        x, y = int(round(x)), int(round(y))
+        return bool(other[max(0, y - r):y + r + 1, max(0, x - r):x + r + 1].any())
+
+    out = []
+    for d in dots:
+        if any(_dist_to_seg((d.x, d.y), s) <= touch for s in segs):
+            continue                                # a wire already has it
+        x0, x1 = max(0, int(d.x - d.r - 4)), min(w, int(d.x + d.r + 5))
+        y0, y1 = max(0, int(d.y - d.r - 4)), min(h, int(d.y + d.r + 5))
+        yy, xx = np.mgrid[y0:y1, x0:x1]
+        r = np.hypot(xx - d.x, yy - d.y)
+        core, rim = r <= d.r * 0.7, (r > d.r + 1) & (r <= d.r + 3)
+        if wire[y0:y1, x0:x1][core].mean() < 0.5:
+            continue                                # not drawn in the wire colour
+        if not other[y0:y1, x0:x1][rim].any():
+            continue                                # nothing of another colour leaves it
+        out.append(Seg((d.x - 0.5, d.y), (d.x + 0.5, d.y)))
+
+    # the stubs: runs of the wire colour too short to be taken for wire
+    for axis in (0, 1):
+        m = wire if axis == 0 else wire.T
+        pad = np.zeros((m.shape[0], m.shape[1] + 2), dtype=bool)
+        pad[:, 1:-1] = m
+        diff = np.diff(pad.astype(np.int8), axis=1)
+        runs = {}
+        for line in range(m.shape[0]):
+            starts, stops = np.flatnonzero(diff[line] == 1), np.flatnonzero(diff[line] == -1)
+            runs[line] = [(int(a), int(b) - 1) for a, b in zip(starts, stops) if 3 <= b - a < wire_len]
+        # just past each end, along the stub: where a lead would carry on
+        step = [(-2, 0), (2, 0)] if axis == 0 else [(0, -2), (0, 2)]
+        for s in _group_runs(runs, axis, 2):
+            if all(meets_other(e[0] + dx, e[1] + dy) for e, (dx, dy) in zip(sorted((s.a, s.b)), step)):
+                out.append(s)
+    return out
+
+
 # -------------------------------------------------------------------- names
 
 def read_text(work: Path) -> list[dict]:
@@ -1558,6 +1629,8 @@ def crosscheck_circuit(circuit, doc: Path | None = None) -> Crosscheck:
         page = touch
     segs = drop_boxes(segs, circuit, touch=touch)      # a closed shape is an outline
     segs = drop_bodies(segs, circuit, touch=touch)
+    if ink is not None:
+        segs += pin_to_pin(image, dots, segs, touch)
     arcs: list[Arc] = []
     if ink is not None:
         arcs = arc_hops(segs, ink, touch, words=read_text(work))

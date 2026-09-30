@@ -326,13 +326,19 @@ def test_no_wire_is_drawn_over_another(tmp_path, circuit):
     assert doubled == []
 
 
-# The one place a label is not a regression. Escobedo draws the Phuncgnosis 569 px
+# The places a label is not a regression. Escobedo draws the Phuncgnosis 569 px
 # wide and stacks three LEDs in 43 px of it, which is less room than three KiCad LED
 # symbols take however they are placed — the build says so itself ("drawn touching").
 # Spreading the pins until the wire fits was tried: it clears the label and costs two
 # false disagreements in the drawing cross-check, because the pins no longer sit on
 # the ink. A reading that is true about where the parts are is worth more than a wire.
-LABEL_IS_FAIR = {"phuncgnosis-escobedo": {"LED_M2"}}
+# The Abductor II is the same trade on another part: Eagle's PT2399 runs its pins
+# 1 5 6 2 7 8 3 4 down one side and KiCad's runs them in order, so each chip's VCO
+# pin stands behind REF, AGND and DGND, whose wires drop straight to their caps and
+# ground where the drawing puts the 2N3904 that pin 6 runs to. IC4's pins 10 and 9
+# lose their cap the same way, to C41 and C42 crowding in where KiCad spaces its pins.
+LABEL_IS_FAIR = {"phuncgnosis-escobedo": {"LED_M2"},
+                 "abductor-ii-deadastronaut": {"IC1_VCO", "IC2_VCO", "IC3_VCO", "IC4_VCO", "IC4_OP1I"}}
 
 
 @pytest.mark.parametrize("circuit", SAMPLES, ids=lambda p: p.name.split(".")[0])

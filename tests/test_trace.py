@@ -993,3 +993,85 @@ def test_the_gnomeratron_agrees_with_its_drawing(tmp_path, monkeypatch):
     # the witness: read with the rule of every other sheet, its crossings come apart
     monkeypatch.setattr(trace, "SPEAKS_IN_HOPS", 10_000)
     assert crosscheck_circuit(c).disagreements > 5
+
+
+def _eagle_page(tmp_path, wire="green", part="red", lone_dot="green"):
+    """Parts joined the way Eagle joins them: a dot between two leads, and a stub of
+    wire a few pixels long between two leads; with a letter's stroke and a dot in
+    the parts' own ink beside them that join nothing."""
+    from PIL import Image, ImageDraw
+    from sch2kicad.trace import Dot
+    img = Image.new("RGB", (400, 300), "white")
+    d = ImageDraw.Draw(img)
+    for y in (20, 280):                                   # what makes the wire colour a wire
+        d.line([(20, y), (380, y)], fill=wire, width=2)
+    d.line([(142, 150), (145, 150)], fill=part, width=2)  # lead, dot, lead: pin to pin
+    d.ellipse([146, 146, 154, 154], fill=wire)
+    d.line([(150, 155), (150, 158)], fill=part, width=2)
+    d.line([(250, 100), (250, 147)], fill=part, width=2)  # lead, 4 px of wire, lead
+    d.line([(250, 148), (250, 151)], fill=wire, width=2)
+    d.line([(250, 152), (250, 200)], fill=part, width=2)
+    d.line([(320, 148), (320, 151)], fill=wire, width=2)  # a letter's stroke on its own
+    d.line([(350, 100), (350, 147)], fill=part, width=2)  # one that meets a part at one end
+    d.line([(350, 148), (350, 151)], fill=wire, width=2)
+    d.line([(160, 240), (196, 240)], fill=part, width=2)  # a dot found in a part's ink
+    d.ellipse([196, 236, 204, 244], fill=lone_dot)
+    d.line([(204, 240), (240, 240)], fill=part, width=2)
+    path = tmp_path / "eagle.png"
+    img.save(path)
+    dots = [Dot(150, 150, 4), Dot(200, 240, 4), Dot(60, 20, 1), Dot(300, 280, 1)]
+    return path, dots
+
+
+def _pin_to_pin(path, dots):
+    from sch2kicad.trace import pin_to_pin, raster_segments
+    segs, _ = raster_segments(path, dots=dots)
+    return pin_to_pin(path, dots, segs, 3.0)
+
+
+def test_parts_joined_pin_to_pin_have_a_conductor(tmp_path):
+    """Eagle joins two parts with no wire: the leads meet at a dot, or reach each
+    other through a stub of wire shorter than any the tracer takes. The Abductor II
+    joins sixteen pins so, and in red and green the tracer sees nothing of it but a
+    dot or a stub on its own. Each is a conductor, and nothing else is: not a
+    letter's stroke in the wire colour, even one touching a part at one end, and not
+    a dot ingest found in a part's own ink."""
+    path, dots = _eagle_page(tmp_path, lone_dot="blue")
+    joins = _pin_to_pin(path, dots)
+    at = sorted((round((s.a[0] + s.b[0]) / 2), round((s.a[1] + s.b[1]) / 2)) for s in joins)
+    assert len(at) == 2 and _near(at[0], (150, 150)) and _near(at[1], (250, 149)), joins
+
+
+def test_a_sheet_in_one_colour_is_not_joined_pin_to_pin(tmp_path):
+    """Drawn in one colour, a part's leads are wire ink the tracer already follows,
+    so a dot with no wire at it joins nothing: the Gnomeratron's six are the heavy
+    strokes of its title, where ink of the wire colour runs on out of the "dot"."""
+    from PIL import Image, ImageDraw
+    from sch2kicad.trace import Dot
+    img = Image.new("RGB", (400, 300), "white")
+    d = ImageDraw.Draw(img)
+    for y in (20, 280):
+        d.line([(20, y), (380, y)], fill="black", width=2)
+    d.ellipse([146, 146, 154, 154], fill="black")
+    d.line([(150, 150), (175, 130)], fill="black", width=5)
+    path = tmp_path / "title.png"
+    img.save(path)
+    assert _pin_to_pin(path, [Dot(150, 150, 4), Dot(60, 20, 1), Dot(300, 280, 1)]) == []
+
+
+def _near(p, q, tol=2):
+    return abs(p[0] - q[0]) <= tol and abs(p[1] - q[1]) <= tol
+
+
+def test_the_abductor_agrees_with_its_drawing(tmp_path, monkeypatch):
+    """Deadastronaut's Abductor II, Eagle red and green. The pins it joins pin to pin
+    trace, the PT2399s' tied grounds among them; what is left is R10's lead, a wire
+    that runs inside the TIME pot's reach and touches none of its pins."""
+    from sch2kicad import trace
+    c = _ready(tmp_path, "Abductor-II-Deadastronaut.pdf", "abductor-ii-deadastronaut.circuit.json", page=4)
+    rep = crosscheck_circuit(c)
+    assert rep.disagreements == 0, rep.text()
+    assert rep.checked == 360 and len(rep.unmatched) == 1 and rep.misplaced == [], rep.text()
+    # the witness: without the rule, the pins joined pin to pin trace to nothing
+    monkeypatch.setattr(trace, "pin_to_pin", lambda *a, **k: [])
+    assert crosscheck_circuit(c).checked < 345

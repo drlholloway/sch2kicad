@@ -51,7 +51,8 @@ def _port_parts(circuit: Circuit, profile: Profile, symbols: SymbolResolver) -> 
     cfg = profile.ports
     problems: list[str] = []
     out: list[Resolved] = []
-    array_id = cfg.get("array")
+    # the array is the 3PDT's pads; with no 3PDT in the circuit it would only strand them
+    array_id = cfg.get("array") if circuit.true_bypass else None
     array_pins = {k.upper(): v for k, v in (cfg.get("array_pins") or {}).items()}
     aliases = {k.upper(): v.upper() for k, v in (cfg.get("aliases") or {}).items()}
     used_array: dict[str, str] = {}

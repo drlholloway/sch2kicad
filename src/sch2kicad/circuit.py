@@ -102,6 +102,9 @@ class Circuit:
     # it the user has looked at and accepted, ref → why
     bom: list[dict] = field(default_factory=list)
     bom_accept: dict[str, str] = field(default_factory=dict)
+    # false when no 3PDT switches the jacks (buffered or JFET-switched bypass): IN and
+    # OUT then get pads of their own instead of the 3PDT pad array
+    true_bypass: bool = True
 
     # ------------------------------------------------------------------ nets
     def net(self, name: str) -> Net:
@@ -208,7 +211,8 @@ def from_dict(data: dict) -> Circuit:
                    ports=ports, texts=texts, notes=[str(n) for n in data.get("notes") or []],
                    blocks=blocks, uncertain=uncertain,
                    bom=[dict(r) for r in data.get("bom") or []],
-                   bom_accept={str(k): str(v) for k, v in (data.get("bom_accept") or {}).items()})
+                   bom_accept={str(k): str(v) for k, v in (data.get("bom_accept") or {}).items()},
+                   true_bypass=bool(data.get("true_bypass", True)))
 
 
 # ------------------------------------------------------------ value parsing

@@ -548,3 +548,35 @@ attachment) — one black-on-white PNG, 2878 px wide, no dots anywhere. Watch fo
   pointing at the end the wiper moves toward.
 - A note says "Please refrain from cloning and selling"; keep the conversion
   private like any other.
+
+**Deadastronaut** (Abductor II, a Wix-hosted build doc) — an Eagle sheet in red and
+green exported as one raster image, Deadastronaut's own board layouts, and the parts
+list as an image on the last page. Watch for:
+
+- **No true bypass.** The dry signal always runs IN → IC5A → IC5B → VOLUME → OUT;
+  the footswitch only puts +9V or ground on the send switch (R12 and D2 onto a
+  2N5457's gate, C9 slowing the change), so the repeats trail. Set
+  `"true_bypass": false` and bring the footswitch out a pad per lug, as the board
+  does (`FOOTSW 1`–`3`); IN, OUT and GND then get pads of their own, not the 3PDT
+  array. The parts list calls the footswitch a DPDT; the sheet draws one pole.
+- **Parts joined pin to pin, with no wire.** Leads meet at a green junction dot
+  between two red leads (R4, R6 and IC5A's input; C55 between LEVEL3 and R45), or
+  reach a flag through a green stub 6 px long. Put the pin where the red lead meets
+  the dot or the stub; the cross-check makes each a conductor (`pin_to_pin`).
+- **Supply terminals are `+9V(T)` and `GND(T)`.** GND(T) is wired to GND on the
+  sheet; +9V(T) is the +9V rail. D1 feeds only the regulator, and D3 guards it.
+- **Four PT2399s in a chain**, each with its own 2N3904 current sink on VCO; one
+  TIME pot sets all four bases, SW1 `long` adds 2.2M in series, and the LFO comes
+  in through DEPTH. Taps: IC1 → LEVEL4, IC2 → LEVEL2, IC3 → R44 → LEVEL3,
+  IC4 → R23 → FEED and LEVEL1. Each chip ties its ground pins 3 and 4 with a wire
+  along its own pin row.
+- **Pots are named by knob** (DEPTH, FEED, LEVEL1–4, SPEED, TIME, VOLUME). Tapers
+  are only in the parts list, some as words (`1M LOG`, `2M B`; the sheet writes
+  `2M lin`), which the parts-list check reads. DEPTH, TIME and SPEED are drawn as
+  rheostats with one lug open.
+- **The parts list is an image**: type it in as `bom` rows as printed. The
+  regulator's row has no ref (`5V VOLTAGE REGULATOR 78L05 TO92`) and the sheet
+  draws a 7805; built as the 78L05 in TO-92, as the Hot Mett and Pocket Comb were.
+- **Rotated labels read alike**: IC2's pin-12 resistor is R32, not a second R37.
+- Eagle's JFET draws the gate level with the source, so the lead beside the gate is S.
+- The parts list says "copyright, R. Henry 2016"; keep the conversion private.

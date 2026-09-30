@@ -182,7 +182,10 @@ based on symbol groups** brings the footprints in grouped by block.
   "OK to sub other diodes" — copy notes into `"notes"`, and act on the ones
   that alter a connection or a pinout (ask if unsure).
 - **Values stay as drawn.** Keep `4.7K`/`3.3nF`/`A100K` exactly as the source
-  writes them; the taper letter is part of a pot's value.
+  writes them; the taper letter is part of a pot's value. One exception, the
+  user's call: pots come in 1K, 2K, 5K, 10K, 20K, 25K, 50K, 100K, 250K, 500K, 1M
+  and 2M (every taper), and the build notes any other value with the nearest
+  stock one. Propose that value; Lane moved the Abductor's B47k DEPTH to B50k.
 - **Source schematics are someone's work.** Keep conversions private unless
   the user says otherwise; some docs ask not to be reposted.
 
@@ -200,7 +203,9 @@ based on symbol groups** brings the footprints in grouped by block.
 `TH_Electrolytic_Cap`, `16mm_Alpha_style` pots with the knob name in `Label`,
 `TH_NPN`/`TH_PNP` (E-B-C), `TH_JFET` (D-S-G), `TH_Op_amp_Dual`,
 `TH_Op_amp_Quad` (V+ on 4, V- on 11), the 3PDT pad array for IN/OUT/GND and
-loose pads for everything else. A transistor whose lead order is not the house
+loose pads for everything else. A circuit with no true bypass (`"true_bypass":
+false`) brings its jacks in on the house `JIN`/`JOUT` sockets instead, tip to
+IN/OUT and the other pin to ground. A transistor whose lead order is not the house
 order gets the stock KiCad symbol for its order on the same TO-92 footprint, so
 the board is right without bending leads.
 

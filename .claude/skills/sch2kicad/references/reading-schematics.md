@@ -557,8 +557,8 @@ list as an image on the last page. Watch for:
   the footswitch only puts +9V or ground on the send switch (R12 and D2 onto a
   2N5457's gate, C9 slowing the change), so the repeats trail. Set
   `"true_bypass": false` and bring the footswitch out a pad per lug, as the board
-  does (`FOOTSW 1`–`3`); IN, OUT and GND then get pads of their own, not the 3PDT
-  array. The parts list calls the footswitch a DPDT; the sheet draws one pole.
+  does (`FOOTSW 1`–`3`); IN and OUT then come in on the house JIN/JOUT sockets, not
+  the 3PDT array. The parts list calls the footswitch a DPDT; the sheet draws one pole.
 - **Parts joined pin to pin, with no wire.** Leads meet at a green junction dot
   between two red leads (R4, R6 and IC5A's input; C55 between LEVEL3 and R45), or
   reach a flag through a green stub 6 px long. Put the pin where the red lead meets
@@ -573,7 +573,8 @@ list as an image on the last page. Watch for:
 - **Pots are named by knob** (DEPTH, FEED, LEVEL1–4, SPEED, TIME, VOLUME). Tapers
   are only in the parts list, some as words (`1M LOG`, `2M B`; the sheet writes
   `2M lin`), which the parts-list check reads. DEPTH, TIME and SPEED are drawn as
-  rheostats with one lug open.
+  rheostats with one lug open. DEPTH is 47k on the sheet and the list, not a value
+  pots come in; Lane had it built B50k.
 - **The parts list is an image**: type it in as `bom` rows as printed. The
   regulator's row has no ref (`5V VOLTAGE REGULATOR 78L05 TO92`) and the sheet
   draws a 7805; built as the 78L05 in TO-92, as the Hot Mett and Pocket Comb were.

@@ -121,3 +121,7 @@ array_pins = { IN = "1", GND = "2", SW = "3", OUT = "4", JI = "5", JO = "6" }
 aliases = { INPUT = "IN", "IN+" = "IN", OUTPUT = "OUT", "OUT+" = "OUT" }
 pad = "2025_PedalDivision_SignalPads:Small_Pad_Round"
 power_pad = "2025_PedalDivision_SignalPads:Small_Pad_Square"
+# With no true bypass ("true_bypass": false) the jacks wire straight to the board,
+# on the house jack sockets: tip to IN or OUT, the other pin to ground, the way the
+# house boards wire them to the 3PDT array's JI and JO pads. Their value is JIN/JOUT.
+jacks = { IN = "2025_PedalDivision_Headers:Conn_01x02_Socket_Jack_In", OUT = "2025_PedalDivision_Headers:Conn_01x02_Socket_Jack_Out" }

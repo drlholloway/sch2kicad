@@ -209,25 +209,59 @@ def test_an_on_off_toggle_lands_on_the_house_spdt():
             "2025_PedalDivision_Switches:Mini Switch SPDT"
 
 
-def test_with_no_true_bypass_the_jacks_get_their_own_pads():
-    """The Abductor II switches its delay send with a JFET and keeps its jacks wired
-    straight to the board: no 3PDT. On the 3PDT pad array its IN and OUT would sit
-    among pads for a switch nobody fits, so they get pads of their own."""
+def test_with_no_true_bypass_the_jacks_come_in_on_sockets():
+    """The Abductor II switches its delay send with a JFET and wires its jacks straight
+    to the board: no 3PDT. On the 3PDT pad array its IN and OUT would sit among pads
+    for a switch nobody fits, so each jack comes in on the house socket, tip to the
+    signal and the other pin to ground — the way the house boards wire their sockets
+    to the array's JI and JO pads."""
     from sch2kicad.build import _port_parts
     from sch2kicad.circuit import from_dict
     from sch2kicad.parts import load_profile
     from sch2kicad.symlib import SymbolResolver
 
-    def pads(true_bypass: bool) -> dict[str, str]:
+    def pads(true_bypass: bool, sockets: bool = True) -> dict[str, tuple]:
         circuit = from_dict({"schema": "sch2kicad/circuit@1", "name": "t", "parts": [],
-                                "true_bypass": true_bypass,
-                                "ports": [{"name": "IN", "net": "IN", "at": [0, 0]},
-                                          {"name": "OUT", "net": "OUT", "at": [50, 0]}]})
-        ports, problems = _port_parts(circuit, load_profile("tht"), SymbolResolver())
+                             "true_bypass": true_bypass, "nets": {"GND": {"kind": "ground"}},
+                             "ports": [{"name": "IN", "net": "IN", "at": [0, 0]},
+                                       {"name": "OUTPUT", "net": "OUT", "at": [50, 0]}]})
+        profile = load_profile("tht")
+        if not sockets:
+            profile.data["ports"] = {k: v for k, v in profile.data["ports"].items() if k != "jacks"}
+        ports, problems = _port_parts(circuit, profile, SymbolResolver())
         assert not problems
-        return {r.part.pins["1"].net: r.lib_id for r in ports if r.part.pins["1"].net}
+        return {r.part.ref + r.part.unit: (r.lib_id.split(":")[1], r.value,
+                                           {r.pinmap[k]: v.net for k, v in r.part.pins.items()})
+                for r in ports}
 
-    array = "2025_PedalDivision_SignalPads:3pdt_Switch_Connectors+Jacks"
-    assert pads(True) == {"IN": array, "OUT": array, "GND": array}
-    assert pads(False) == {"IN": "2025_PedalDivision_SignalPads:Small_Pad_Round",
-                           "OUT": "2025_PedalDivision_SignalPads:Small_Pad_Round"}
+    array = ("3pdt_Switch_Connectors+Jacks", "")
+    assert pads(True) == {"Switch_Connectors1A": array + ({"1": "IN"},),
+                          "Switch_Connectors1D": array + ({"4": "OUT"},),
+                          "Switch_Connectors1B": array + ({"2": "GND"},),
+                          "Switch_Connectors1C": array + ({"3": None},),
+                          "Switch_Connectors1E": array + ({"5": None},),
+                          "Switch_Connectors1F": array + ({"6": None},)}
+    assert pads(False) == {"J1": ("Conn_01x02_Socket_Jack_In", "JIN", {"1": "IN", "2": "GND"}),
+                           "J2": ("Conn_01x02_Socket_Jack_Out", "JOUT", {"1": "OUT", "2": "GND"})}
+    # a profile with no sockets still keeps the jacks off a 3PDT that is not there
+    assert pads(False, sockets=False) == {"H1": ("Small_Pad_Round", "IN", {"1": "IN"}),
+                                          "H2": ("Small_Pad_Round", "OUTPUT", {"1": "OUT"})}
+
+
+def test_a_pot_value_nobody_stocks_is_said_out_loud():
+    """Pots come in 1K, 2K, 5K, 10K, 20K, 25K, 50K, 100K, 250K, 500K, 1M and 2M,
+    in every taper. The Abductor II draws DEPTH as 47k and its parts list says 47kB:
+    a value that has to be hunted for or quietly swapped at ordering time. The build
+    says so and names the nearest stock value, keeping the taper."""
+    from sch2kicad.circuit import Part
+    from sch2kicad.parts import _stock_pot
+
+    def note(value):
+        return _stock_pot(Part(ref="VR1", type="pot", value=value))
+
+    assert note("B47k").endswith("the nearest is B50K")
+    assert note("47kA").endswith("the nearest is A50K")
+    assert note("C220K").endswith("the nearest is C250K")
+    # the Acapulco writes its 1M audio pot "1m A": no pot is a milliohm
+    for stocked in ("A1M", "1m A", "B250K", "C10K", "W100K", "B2M", "25K"):
+        assert note(stocked) is None, stocked

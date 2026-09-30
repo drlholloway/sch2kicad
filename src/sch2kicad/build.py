@@ -51,16 +51,36 @@ def _port_parts(circuit: Circuit, profile: Profile, symbols: SymbolResolver) -> 
     cfg = profile.ports
     problems: list[str] = []
     out: list[Resolved] = []
-    # the array is the 3PDT's pads; with no 3PDT in the circuit it would only strand them
+    # the array is the 3PDT's pads; with no 3PDT in the circuit it would only strand
+    # them, and the jacks come to the board on sockets of their own instead
     array_id = cfg.get("array") if circuit.true_bypass else None
+    jacks = {} if circuit.true_bypass else {k.upper(): v for k, v in (cfg.get("jacks") or {}).items()}
     array_pins = {k.upper(): v for k, v in (cfg.get("array_pins") or {}).items()}
     aliases = {k.upper(): v.upper() for k, v in (cfg.get("aliases") or {}).items()}
+    ground = next((n for n in circuit.nets if circuit.net_kind(n) == "ground"), "GND")
+    taken = {p.ref for p in circuit.parts}
     used_array: dict[str, str] = {}
-    pad_n = 0
+    used_jacks: set[str] = set()
+    pad_n = jack_n = 0
     for port in circuit.ports:
         name = port.name.strip()
         key = aliases.get(name.upper(), name.upper())
-        if array_id and key in array_pins and key not in used_array and key != "GND":
+        if key in jacks and key not in used_jacks:
+            sym = symbols.get(jacks[key])
+            by_name = {p.name.upper(): p.number for p in sym.pins_for(1)}
+            if not {"T", "R"} <= set(by_name):
+                problems.append(f"port {name}: {jacks[key]} has no T and R pins")
+                continue
+            jack_n += 1
+            while f"J{jack_n}" in taken:
+                jack_n += 1
+            part = Part(ref=f"J{jack_n}", type="port", value=f"J{key}",
+                        pins={"T": PinRef("T", port.net, port.at), "R": PinRef("R", ground, None)})
+            out.append(Resolved(part=part, lib_id=jacks[key], symbol=sym, unit=1,
+                                footprint=sym.props.get("Footprint", ""), value=f"J{key}", fields={},
+                                pinmap={"T": by_name["T"], "R": by_name["R"]}))
+            used_jacks.add(key)
+        elif array_id and key in array_pins and key not in used_array and key != "GND":
             sym = symbols.get(array_id)
             pin = array_pins[key]
             unit = sym.unit_of_pin(pin)
@@ -292,9 +312,9 @@ class Builder:
             lay.placed.extend(spare_pads)
         lay.unplaced = []
 
-    def _orient_single_pin(self, pl: Placed, toward: tuple[float, float]) -> None:
-        """Turn a one-pin symbol (pad) so its lead points at ``toward`` (sheet mm)."""
-        pin = pl.pins()[0]
+    def _orient_single_pin(self, pl: Placed, toward: tuple[float, float], number: str | None = None) -> None:
+        """Turn a pad (or a socket, by pin ``number``) so its lead points at ``toward`` (sheet mm)."""
+        pin = next(p for p in pl.pins() if p.number == number) if number else pl.pins()[0]
         tip = pl.pin_pos(pin.number)
         dx, dy = toward[0] - tip[0], toward[1] - tip[1]
         want = (1 if dx > 0 else -1, 0) if abs(dx) >= abs(dy) else (0, 1 if dy > 0 else -1)
@@ -312,17 +332,34 @@ class Builder:
         lay = self.layout
         extra = [t.at for t in self.c.texts if t.at] + [p.at for p in self.c.ports if p.at]
         lay.place(extra_points=extra)
-        # pads face the part they wire to
+        # pads face the part they wire to; a jack socket by its tip, the one pin the
+        # drawing places, its ground pin beside it on the same side
         for pl in lay.placed:
-            if pl.res.part.type == "port" and len(pl.pins()) == 1:
-                net = pl.res.part.pins["1"].net
+            drawn = [s for s, p in pl.res.part.pins.items() if p.at is not None]
+            if pl.res.part.type == "port" and len(drawn) == 1:
+                net, number = pl.res.part.pins[drawn[0]].net, pl.pinmap[drawn[0]]
                 mates = [p2 for p2 in lay.placed if p2 is not pl and any(
                     self.pin_net(p2, pn.number) == net for pn in p2.pins())]
                 if mates:
                     tgt = min((p2.pin_pos(pn.number) for p2 in mates for pn in p2.pins()
                                if self.pin_net(p2, pn.number) == net),
-                              key=lambda q: math.dist(q, pl.pin_pos(pl.pins()[0].number)))
-                    self._orient_single_pin(pl, tgt)
+                              key=lambda q: math.dist(q, pl.pin_pos(number)))
+                    if len(pl.pins()) > 1:
+                        # a jack comes in from the side of the box: level, toward its
+                        # mate, or toward the middle when the mate is straight above
+                        tip = pl.pin_pos(number)
+                        if abs(tgt[0] - tip[0]) < GRID:
+                            bx0, _, bx1, _ = lay.bounds()
+                            tgt = ((bx0 + bx1) / 2, tip[1])
+                        tgt = (tgt[0], tip[1])
+                    self._orient_single_pin(pl, tgt, number)
+                # a socket is two pins and a body where the drawing had a dot for a pad:
+                # the Abductor's OUT is drawn on VOLUME's wiper, and the socket stood on
+                # the pot and pushed its ground flag into it. Off the parts, the router
+                # brings its tip back.
+                others = [p2 for p2 in lay.placed if p2 is not pl]
+                if len(pl.pins()) > 1 and lay.conflicts(pl, others, margin=2.54):
+                    lay.find_spot(pl, others, radius=30)
         self._room_for_supply_rails()
         self._place_unplaced()
         self.w.paper = lay.sheet.paper

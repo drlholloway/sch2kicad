@@ -1071,7 +1071,7 @@ def test_the_abductor_agrees_with_its_drawing(tmp_path, monkeypatch):
     c = _ready(tmp_path, "Abductor-II-Deadastronaut.pdf", "abductor-ii-deadastronaut.circuit.json", page=4)
     rep = crosscheck_circuit(c)
     assert rep.disagreements == 0, rep.text()
-    assert rep.checked == 360 and len(rep.unmatched) == 1 and rep.misplaced == [], rep.text()
+    assert rep.checked == 359 and len(rep.unmatched) == 1 and rep.misplaced == [], rep.text()
     # the witness: without the rule, the pins joined pin to pin trace to nothing
     monkeypatch.setattr(trace, "pin_to_pin", lambda *a, **k: [])
     assert crosscheck_circuit(c).checked < 345

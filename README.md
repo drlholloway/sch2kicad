@@ -74,9 +74,10 @@ Aion FX) is in
   `TH_Film_Cap`, `TH_Electrolytic_Cap`, `16mm_Alpha_style` pots (knob name in
   `Label`), `TH_NPN`/`TH_PNP` (E-B-C), `TH_JFET`, `TH_Op_amp_Dual`,
   `TH_Op_amp_Quad` (V+ on 4, V- on 11 — the TL074/LM324 order), the 3PDT
-  pad array for IN/OUT/GND — or pads of their own when the circuit has no true
-  bypass (`"true_bypass": false`: a JFET-switched send like the Abductor II's,
-  where a 3PDT's pads would only strand a switch nobody fits). A transistor in
+  pad array for IN/OUT/GND — or, when the circuit has no true bypass
+  (`"true_bypass": false`: a JFET-switched send like the Abductor II's, where a
+  3PDT's pads would only strand a switch nobody fits), the house `JIN`/`JOUT` jack
+  sockets, tip to the signal and the other pin to ground. A transistor in
   another lead order gets the stock KiCad symbol for that order on the same
   TO-92 footprint. Other ICs (TL071,
   the 4000-series logic) use the stock KiCad symbol on a DIP package picked by
@@ -162,8 +163,8 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   its own, as long as ink of another colour leaves it: on a sheet in one colour a
   part's leads are wire ink already, and a "dot" with no wire is lettering (the
   Abductor II). All twenty-eight sheets,
-  from eighteen publishers, are checked against their drawings, and **3602 of
-  the 3605 pins they draw are traced** — two of the other three are rheostat
+  from eighteen publishers, are checked against their drawings, and **3601 of
+  the 3604 pins they draw are traced** — two of the other three are rheostat
   wipers the sheet ties inside the part and never draws, the third a lead that
   runs inside a pot's reach and touches none of its pins: twenty-four agree
   outright, and nine disagreements stand on the other four — every one of them the drawing's own
@@ -183,7 +184,9 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   shift registers on the tool's own symbol), all regression cases. Parts lists
   are read from PedalPCB, Aion FX and Parasit Studio docs. A taper written as a
   word (`1M LOG`, `2M lin`) reads as its letter, so Deadastronaut's list checks
-  its knobs too.
+  its knobs too. A pot drawn at a value pots do not come in — they come in 1K, 2K,
+  5K, 10K, 20K, 25K, 50K, 100K, 250K, 500K, 1M and 2M, every taper — gets a note
+  naming the nearest one, its taper kept (the Abductor's 47k DEPTH, built B50k).
 - **The sheet you get back (done):** a pass over the layout. Every reference,
   value and knob name is placed where nothing else already is — clear of the
   other parts, of their pins and of each other — and any that a wire ends up

@@ -7,6 +7,7 @@ anything that cannot be decided is reported as a problem instead of guessed.
 
 from __future__ import annotations
 
+import math
 import re
 import tomllib
 from dataclasses import dataclass, field, replace
@@ -228,6 +229,27 @@ def _switch_action(part: Part, ptype: str) -> tuple[str, str, list[str], list[st
     return (f"{poles} {action}", f"{poles} switch, {action} — {_ACTION_POSITIONS[action]}", [], [])
 
 
+# The values a panel pot comes in, linear, audio and reverse audio alike (Lane). A
+# sheet can ask for any value, and one that is not stocked turns into a hunt at
+# ordering time or a quiet substitution nobody wrote down.
+STOCK_POTS = (1e3, 2e3, 5e3, 10e3, 20e3, 25e3, 50e3, 100e3, 250e3, 500e3, 1e6, 2e6)
+
+
+def _stock_pot(part: Part) -> str | None:
+    """A note when a pot's value is not one the pot comes in, with the nearest that is."""
+    ohms = parse_value(re.sub(r"(?<=\d)m", "M", part.value))    # no pot is milliohms: 1m A is 1M
+    if ohms is None or any(abs(ohms - v) <= v * 1e-6 for v in STOCK_POTS):
+        return None
+    nearest = min(STOCK_POTS, key=lambda v: abs(math.log(v / ohms)))
+    m = re.match(r"^([ABCW])(?=\d)", part.value.strip()) or re.search(r"(?<=[\dkKmM])([ABCW])$", part.value.strip())
+    return (f"{part.ref}: {part.value} is not a stock pot value ({', '.join(_ohms(v) for v in STOCK_POTS)}); "
+            f"the nearest is {(m.group(1) if m else '')}{_ohms(nearest)}")
+
+
+def _ohms(v: float) -> str:
+    return f"{v / 1e6:g}M" if v >= 1e6 else f"{v / 1e3:g}K"
+
+
 # ------------------------------------------------------------------ resolution
 
 @dataclass
@@ -411,6 +433,8 @@ class PartResolver:
         fields = dict(part.fields)
         if part.label:
             fields["Label"] = part.label
+        if ptype == "pot" and (stock := _stock_pot(part)):
+            notes.append(stock)
         if ptype in _ACTION_TYPES:
             value, desc, n2, p2 = _switch_action(part, ptype)
             if desc:

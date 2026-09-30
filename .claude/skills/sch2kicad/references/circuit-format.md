@@ -119,8 +119,9 @@ Unlisted nets are signals. List only what needs a kind:
   on the 3PDT pad array; others get their own pad.
 - `true_bypass` — `false` when no 3PDT switches the jacks: a buffered or
   JFET-switched bypass, where the footswitch only switches a control line. IN and OUT
-  then get pads of their own, with no 3PDT array. Bring the footswitch out as a pad
-  per lug it uses, named for the lug (`FOOTSW 2`).
+  then come in on the house jack sockets (`JIN`/`JOUT`: tip to the signal, the other
+  pin to ground), with no 3PDT array and no separate jack ground pad. Bring the
+  footswitch out as a pad per lug it uses, named for the lug (`FOOTSW 2`).
 - `texts` — annotations that are not nets: measured voltages (`"kind": "voltage"`),
   remarks next to parts. Knob names go in `label`, not here.
 - `notes` — the NOTES block, one string per note.

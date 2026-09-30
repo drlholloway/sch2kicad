@@ -518,3 +518,33 @@ from a technical manual, with DOD's own bill of materials on the next pages. Wat
 - **NE570 halves** are drawn as boxes with the datasheet's names (INV, R3, OUT,
   THD, DG, RIN, RC); `sch2kicad:NE570` matches them. `4007A` is the CD4007
   (`sch2kicad:CD4007`, its three pairs as units by pin number).
+
+**McSpunckle Gnomish Effectworks** (Gnomeratron VTF, an ilovefuzz.com forum
+attachment) — one black-on-white PNG, 2878 px wide, no dots anywhere. Watch for:
+
+- **A hop for every crossing that does not join, so a plain crossing joins.** Each
+  non-join is a small semicircle over the other wire, and every `+` crossing on the
+  sheet is a bias node (a collector-to-base resistor meeting the base line). The
+  crosscheck finds the arcs itself (`arc_hops`) and, once a page shows three,
+  joins its plain crossings; read them the same way.
+- **Switches are lugs and levers.** Each lug is a ring; a lever is a slanted line
+  from its pivot (the common, where the wire runs in) to the lug it touches (the
+  throw made as drawn). A DPDT's four lugs stand in one column — pole A's two
+  throws, then pole B's — so the lugs the two levers touch are the same position
+  (`a` on both, or `b` on both). Two levers joined by a short straight are one
+  node: a common shared by two switches (SW3B with SW4, SW7B with SW8). Put the
+  common's pin at the lever's pivot, not on the wire below it. Only SW9 says its
+  action; Lane had the rest built on/on.
+- **Part numbers clash and slip.** Two parts are both `VR5` (the sag trimmer and
+  Q6's emitter trimmer; Q6's became VR11), and SW2's second pole is printed `S12B`.
+- **Unlabelled 5k rheostats are trimmers** (VR1, VR5, VR7, VR10, VR11), wiper tied
+  to the ground/rail end so clockwise lowers the resistance. Put the tied wiper's
+  pin in open paper beside the body, not at the arrow's tip, which lands on the
+  next wire over.
+- **J201s draw the source lead level with the gate**, across the filled bar, so a
+  run goes straight through the transistor. Put S (and D) where the lead leaves
+  the bar, so the run passes through two pins and is cut as body.
+- **The pots mark clockwise with a hollow arrow** (⇧ or ⇩) beside the wiper,
+  pointing at the end the wiper moves toward.
+- A note says "Please refrain from cloning and selling"; keep the conversion
+  private like any other.

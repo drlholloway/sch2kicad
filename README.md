@@ -149,9 +149,14 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   back at ingest, so digits read the right way and a DIP's notch sits on top.
   A word written inside a chip, between its own pins, is that pin's name and not a
   rail's flag: DOD's FX96 writes `GND` inside both BBD chips, whose GND pin runs
-  on a filtered +9V. All twenty-six sheets,
-  from sixteen publishers, are checked against their drawings, and **every one of
-  the 2995 pins they draw is traced**: twenty-two agree outright, and nine disagreements stand on the other four — every one of them the drawing's own
+  on a filtered +9V. A crossing stepped over with a little **arc** is a hop as
+  well, found by the arc itself — a semicircle of ink with bare paper inside,
+  from a wire end over a wire running straight through to a conductor as far
+  past — and a sheet that draws its hops that way has said what a plain crossing
+  is: a join (the Gnomeratron VTF). All twenty-seven sheets,
+  from seventeen publishers, are checked against their drawings, and **3242 of
+  the 3244 pins they draw are traced** — the other two are rheostat wipers the
+  sheet ties inside the part and never draws: twenty-three agree outright, and nine disagreements stand on the other four — every one of them the drawing's own
   doing, never a join the tracer invented: an off-page connector drawn twice, a
   jack whose normalling lug is joined until a plug lifts it, a pair of pads joined
   only by a label, a battery with its wire drawn straight through the cells. They are recorded
@@ -218,7 +223,9 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   gets a note rather than a guess: a wrong action loses a setting instead of
   killing a board, so it does not block READY the way an unknown lead order
   does. An `on/on/on` on a single-pole switch is a problem, though, since one
-  pole cannot make three different live positions. Every toggle in the samples
+  pole cannot make three different live positions. An on/off toggle is built on
+  the house mini SPDT with one throw left unused, since the library has no SPST
+  and KiCad's SW_SPST lands on a throw and the middle lug. Every toggle in the samples
   states one now — the last three were settled by reading the sheets rather
   than by assuming, and two of them could have taken a centre-off for a third
   voice, which is a change to the circuit and so was the owner's call, not the

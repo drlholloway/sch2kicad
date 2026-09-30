@@ -194,3 +194,16 @@ def test_a_zener_lands_on_a_house_footprint():
     assert _footprint_rule(tht, "zener", glass) == "2025_PedalDivision_Diodes:DO-35_P7.62mm"
     assert _footprint_rule(tht, "zener", watt) == "2025_PedalDivision_Diodes:DO-41_P7.62mm"
     assert _footprint_rule(smd, "zener", glass) == "Diode_SMD:D_SOD-123"
+
+
+def test_an_on_off_toggle_lands_on_the_house_spdt():
+    """The Gnomeratron's SW1 and SW6 are on/off toggles, and the house library has no
+    SPST, so KiCad's SW_SPST came through with no footprint and the build was not
+    READY. The part to order is the mini SPDT with a throw unused: SW_SPST's pins 1
+    and 2 land on a throw and the middle lug, which is the common."""
+    from sch2kicad.circuit import Part
+    from sch2kicad.parts import _footprint_rule, load_profile
+    sw = Part(ref="SW1", type="switch_spst", action="on/off")
+    for profile in ("tht", "smd"):
+        assert _footprint_rule(load_profile(profile), "switch_spst", sw) == \
+            "2025_PedalDivision_Switches:Mini Switch SPDT"

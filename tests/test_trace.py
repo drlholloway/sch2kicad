@@ -898,3 +898,98 @@ def test_a_pin_name_inside_a_chip_is_not_a_rail_flag(tmp_path, monkeypatch):
     rep = crosscheck_circuit(c)
     assert rep.disagreements > 0
     assert "V_BBD" in rep.text() and "GND" in rep.text()
+
+
+def _arc_page(tmp_path, draw, size=(400, 200)):
+    """A drawing made with ``draw(d)``, and what the tracer reads off it."""
+    from PIL import Image, ImageDraw
+    from sch2kicad.trace import page_ink, raster_segments
+    img = Image.new("RGB", size, "white")
+    draw(ImageDraw.Draw(img))
+    path = tmp_path / "arc.png"
+    img.save(path)
+    segs, _ = raster_segments(path)
+    return segs, page_ink(path)
+
+
+def _hop(d, turn=False):
+    """A wire along y=100 stepping over the one at x=200 with a semicircle; with
+    ``turn`` it heads straight down after the jump, as the Gnomeratron's SW2A does."""
+    d.line([(40, 100), (186, 100)], fill="black", width=2)
+    d.arc([186, 86, 214, 114], 180, 360, fill="black", width=2)
+    if turn:
+        d.line([(214, 100), (214, 190)], fill="black", width=2)
+    else:
+        d.line([(214, 100), (360, 100)], fill="black", width=2)
+    d.line([(200, 10), (200, 190)], fill="black", width=2)
+
+
+def _joined(segs, arcs, *pts, crossings_join=False):
+    from sch2kicad.trace import Conductors
+    cond = Conductors(segs, [], t_contacts=True, page=8.0, arcs=arcs, crossings_join=crossings_join)
+    return [cond.find(min(range(len(segs)), key=lambda i: _dist(p, segs[i]))) for p in pts]
+
+
+@pytest.mark.parametrize("turn", [False, True])
+def test_a_wire_that_arcs_over_another_hops_it(tmp_path, turn):
+    """The Gnomeratron VTF steps every wire that does not connect over the other with a
+    semicircle whose top touches the wire it jumps. A raster sees a wire stopping a
+    stroke short, another starting as far past, and a scatter of short runs where the
+    curve went; the arc is what says the two sides are one wire, and not on the other."""
+    from sch2kicad.trace import arc_hops
+    segs, ink = _arc_page(tmp_path, lambda d: _hop(d, turn))
+    far = (214, 180) if turn else (340, 100)
+    arcs = arc_hops(segs, ink, 8.0)
+    assert len({a.at for a in arcs}) == 1, arcs
+    near_side, far_side, jumped = _joined(segs, arcs, (60, 100), far, (200, 20))
+    assert near_side == far_side, "the wire does not carry on over its arc"
+    assert near_side != jumped, "the arc was read as a junction with the wire it jumps"
+    # the rule's witness: without it the wire comes apart at every hop
+    near_side, far_side = _joined(segs, [], (60, 100), far)
+    assert near_side != far_side
+
+
+def test_a_page_that_draws_its_hops_joins_where_it_crosses():
+    """A sheet that steps over every wire it does not connect has said what a plain
+    crossing is: a join. Most sheets say the opposite, with a dot, so the rule waits
+    for the page to show its hops before it believes a crossing."""
+    from sch2kicad.trace import Seg
+    plus = [Seg((100, 200), (300, 200)), Seg((200, 100), (200, 300))]
+    assert len(set(_joined(plus, [], (120, 200), (200, 120), crossings_join=True))) == 1
+    assert len(set(_joined(plus, [], (120, 200), (200, 120)))) == 2
+    # a T is a join either way, and two wires that only come near do not cross
+    apart = [Seg((100, 200), (300, 200)), Seg((200, 206), (200, 300))]
+    assert len(set(_joined(apart, [], (120, 200), (200, 280), crossings_join=True))) == 2
+
+
+def test_an_arc_among_the_words_is_lettering(tmp_path):
+    """The bowl of a letter sitting on a title-block rule is a semicircle over a line.
+    Where the page was read for words, an arc inside one is part of it."""
+    from sch2kicad.trace import arc_hops
+    segs, ink = _arc_page(tmp_path, _hop)
+    assert arc_hops(segs, ink, 8.0, words=[{"text": "o", "box": [190, 80, 212, 104]}]) == []
+
+
+def test_the_gnomeratron_agrees_with_its_drawing(tmp_path, monkeypatch):
+    """McSpunckle's Gnomeratron VTF: a hop for every crossing that does not join, so a
+    plain crossing does. Every pin with a wire traces and the reading agrees; the two
+    left over are rheostat wipers the sheet ties inside the part and never draws."""
+    from sch2kicad import trace
+    c = _ready(tmp_path, "Gnomeratron-VTF.png", "gnomeratron-vtf.circuit.json")
+    work, hops = c.path.parent, {(598, 778), (718, 1078), (838, 820), (894, 988), (1048, 732),
+                                 (1348, 762), (1386, 448), (1528, 238), (1632, 778), (1752, 1078)}
+    image = work / "source.png"
+    unit = trace.page_unit(image)
+    segs, _ = trace.raster_segments(image, dots=trace.raster_dots(work))
+    segs = trace.drop_bodies(trace.drop_boxes(segs, c, touch=unit), c, touch=unit)
+    ink = trace.page_ink(image)
+    # its ten hops and nothing else: not a wiper's lead, not "share!" when OCR is missing
+    for words in (trace.read_text(work), []):
+        found = {tuple(round(v) for v in a.at) for a in trace.arc_hops(segs, ink, unit, words=words)}
+        assert found == hops, found ^ hops
+    rep = crosscheck_circuit(c)
+    assert rep.disagreements == 0, rep.text()
+    assert rep.checked == 247 and rep.drawn == 249, rep.text()
+    # the witness: read with the rule of every other sheet, its crossings come apart
+    monkeypatch.setattr(trace, "SPEAKS_IN_HOPS", 10_000)
+    assert crosscheck_circuit(c).disagreements > 5

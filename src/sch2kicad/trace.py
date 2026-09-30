@@ -86,6 +86,9 @@ WIRE_RUN = 20          # only a wire runs this share of the page in a straight l
 HOP_GAP = 3.0          # how wide the break marking a crossing can be, in page units
 DIAG_GAP = 3          # px of paper a slanting wire may cross, where another passes through it
 PAST_END = 0.9         # how far past a wire a run may stop and still have met it
+HOP_ARC = 2.0          # how far from the wire it jumps an arc hop may start, in page units
+ARC_INK = 0.85         # how much of a semicircle has to be ink to be an arc
+SPEAKS_IN_HOPS = 3     # arc hops on a page before its plain crossings are joins
 
 
 @dataclass(frozen=True)
@@ -179,11 +182,13 @@ class Conductors:
     """Segments and dots, joined into nets."""
 
     def __init__(self, segs: list[Seg], dots: list[Dot], t_contacts: bool, tol: float = 2.0,
-                 page: float = 0.0):
+                 page: float = 0.0, arcs: list[Arc] = (), crossings_join: bool = False):
         self.segs = segs
         self.dots = dots
         self.tol = tol
         self.page = page       # the page's own smallest unit; 0 leaves crossings alone
+        self.arcs = list(arcs)                  # hops drawn as arcs (``arc_hops``)
+        self.crossings_join = crossings_join    # a page that draws hops joins where it crosses
         self.past = PAST_END * page     # how far past a wire a run may stop and still have met it
         self._parent: dict[int, int] = {}
         self._len: dict[int, float] | None = None
@@ -215,6 +220,7 @@ class Conductors:
                 for gy in range(int((y0 - reach) // cell), int((y1 + reach) // cell) + 1):
                     near[(gx, gy)].add(i)
         apart = self._hops(near, cell) if self.page else set()
+        self._arcs()
         for members in near.values():
             for i in members:
                 for j in members:
@@ -297,6 +303,22 @@ class Conductors:
                         apart.add((min(j, k), max(j, k)))
         return apart
 
+    def _arcs(self) -> None:
+        """Join the two sides of every arc hop (``arc_hops``).
+
+        What an arc leaves a raster is a wire end, the wire it steps over, and whatever
+        the arc comes down on at the far side; the curve itself is a scatter of short
+        runs that reach neither side. Both sides stop a stroke or more short of the
+        wire jumped, so nothing joins them to it.
+        """
+        tol = self.tol
+        for arc in self.arcs:
+            side = [i for i, s in enumerate(self.segs)
+                    if min(math.dist(arc.a, s.a), math.dist(arc.a, s.b)) <= tol
+                    or _dist_to_seg(arc.b, s) <= tol]
+            for i in side[1:]:
+                self.union(side[0], i)
+
     def _stops_past(self, s: Seg, t: Seg) -> bool:
         """Does a run of ``s`` stop just past ``t``, having crossed the line it stands on?
 
@@ -327,6 +349,8 @@ class Conductors:
             return False
         if (any(_dist_to_seg(p, t) <= tol for p in (s.a, s.b))
                 or any(_dist_to_seg(q, s) <= tol for q in (t.a, t.b))):
+            return True
+        if self.crossings_join and _cross(s, t, tol):
             return True
         return bool(self.past) and (self._stops_past(s, t) or self._stops_past(t, s))
 
@@ -382,6 +406,109 @@ class Conductors:
             if best is None or score < best[0]:
                 best = (score, d, i)
         return self.find(best[2]) if best else None
+
+
+def _cross(s: Seg, t: Seg, tol: float) -> bool:
+    """Do two runs, one across the other, pass right through each other?"""
+    for a, b in ((s, t), (t, s)):
+        if abs(a.a[1] - a.b[1]) <= tol and abs(b.a[0] - b.b[0]) <= tol:   # a along x, b along y
+            y, x = _line(a, 1), _line(b, 0)
+            ax0, ax1 = sorted((a.a[0], a.b[0]))
+            by0, by1 = sorted((b.a[1], b.b[1]))
+            return ax0 + tol < x < ax1 - tol and by0 + tol < y < by1 - tol
+    return False
+
+
+# ------------------------------------------------------------------ arc hops
+
+@dataclass(frozen=True)
+class Arc:
+    """A hop drawn as an arc: from a wire end ``a``, over the wire at ``at``, down at ``b``."""
+    a: Point
+    at: Point
+    b: Point
+
+
+def arc_hops(segs: list[Seg], ink, unit: float, tol: float = 2.0,
+             words: list[dict] = ()) -> list[Arc]:
+    """The crossings a drawing marks with a little arc.
+
+    The Gnomeratron VTF steps every wire that does not connect over the other with a
+    semicircle, whose top touches the wire it jumps: a raster reads that as a wire
+    that stops a stroke or so short of another, a second that starts as far past it,
+    and a scatter of short runs where the curve went. The break is too wide for the
+    hop rule's gap (``Conductors._hops``), and one side of it is often the corner of
+    a wire that turns straight after the jump, so the two ends are not even on one
+    line. What says it is a hop is the **arc itself**, so that is what is looked for:
+    a semicircle of ink from a wire end, over a wire running across just beyond it,
+    to a conductor at the same distance on the far side.
+
+    Other things on a page make a semicircle over a straight line, and each is
+    ruled out by what a hop is. The wire a hop jumps is a wire, running right
+    through: the stroke of a letter is short, and a wiper's lead stops at its pot.
+    The arc is a stroke with bare paper inside it: Chuck's pairs of junction dots
+    side by side on a wire fill theirs, and so do an electrolytic's plates. And a
+    letter sitting on a title-block rule — the bowl of a ``d`` — is among the words
+    the page was read for, so an arc there is lettering, whatever it looks like;
+    without OCR, the length of the jumped wire is what is left to tell them apart.
+    """
+    boxes = [w["box"] for w in words]
+    high, wide = ink.shape
+
+    def inked(x: float, y: float) -> bool:
+        xi, yi = int(round(x)), int(round(y))
+        return any(0 <= yi + dy < high and 0 <= xi + dx < wide and ink[yi + dy, xi + dx]
+                   for dx in (-1, 0, 1) for dy in (-1, 0, 1))
+
+    def arc_ink(m: Point, u: Point, n: Point, r: float) -> bool:
+        # the semicircle from the end (m - r u) round by m + r n to the far side; the
+        # stretch round its top sits on the jumped wire, so it counts for nothing either way
+        angles = [math.pi * k / 24 for k in range(2, 23)]
+        ends = [t for t in angles if abs(t - math.pi / 2) > math.pi / 5]
+        hit = sum(any(inked(m[0] - rr * math.cos(t) * u[0] + rr * math.sin(t) * n[0],
+                            m[1] - rr * math.cos(t) * u[1] + rr * math.sin(t) * n[1])
+                      for rr in (r - 2, r - 1, r, r + 1, r + 2)) for t in ends)
+        if hit < ARC_INK * len(ends):
+            return False
+        # a stroke, not a filled shape: the inside of the arc, away from the wire it
+        # jumps and the one it carries, is paper
+        inside = [t for t in angles if math.pi / 8 < t < 3 * math.pi / 8 or 5 * math.pi / 8 < t < 7 * math.pi / 8]
+        filled = sum(inked(m[0] - r / 2 * math.cos(t) * u[0] + r / 2 * math.sin(t) * n[0],
+                           m[1] - r / 2 * math.cos(t) * u[1] + r / 2 * math.sin(t) * n[1]) for t in inside)
+        return filled <= len(inside) / 3
+
+    def lettering(m: Point, r: float) -> bool:
+        return any(b[0] - r <= m[0] <= b[2] + r and b[1] - r <= m[1] <= b[3] + r for b in boxes)
+
+    arcs: list[Arc] = []
+    for s in segs:
+        for axis in (0, 1):
+            if abs(s.a[1 - axis] - s.b[1 - axis]) > tol:
+                continue                                    # not a run along this axis
+            for end, other in ((s.a, s.b), (s.b, s.a)):
+                sign = 1.0 if end[axis] > other[axis] else -1.0
+                u = (sign, 0.0) if axis == 0 else (0.0, sign)
+                for k in segs:
+                    if abs(k.a[axis] - k.b[axis]) > tol:
+                        continue                            # the jumped wire runs across
+                    d = (_line(k, axis) - end[axis]) * sign
+                    if not unit <= d <= HOP_ARC * unit:
+                        continue
+                    m = (end[0] + d * u[0], end[1] + d * u[1])
+                    lo, hi = sorted((k.a[1 - axis], k.b[1 - axis]))
+                    if k.length() < 6 * d or not lo + tol < m[1 - axis] < hi - tol:
+                        continue                # a wire, running through; not a letter's stroke
+                    if lettering(m, d):
+                        continue
+                    b = (end[0] + 2 * d * u[0], end[1] + 2 * d * u[1])
+                    if not any(_dist_to_seg(b, t) <= tol for t in segs if t is not k and t is not s):
+                        continue                            # nothing on the far side
+                    for side in (1.0, -1.0):
+                        n = (0.0, side) if axis == 0 else (side, 0.0)
+                        if arc_ink(m, u, n, d):
+                            arcs.append(Arc(end, m, b))
+                            break
+    return arcs
 
 
 # ------------------------------------------------------------------ bodies
@@ -1431,7 +1558,13 @@ def crosscheck_circuit(circuit, doc: Path | None = None) -> Crosscheck:
         page = touch
     segs = drop_boxes(segs, circuit, touch=touch)      # a closed shape is an outline
     segs = drop_bodies(segs, circuit, touch=touch)
-    cond = Conductors(segs, dots, t_contacts=t_contacts, page=page)
+    arcs: list[Arc] = []
+    if ink is not None:
+        arcs = arc_hops(segs, ink, touch, words=read_text(work))
+    # a drawing that steps over every wire it does not join has said what a plain
+    # crossing is: the other thing
+    cond = Conductors(segs, dots, t_contacts=t_contacts, page=page, arcs=arcs,
+                      crossings_join=len({arc.at for arc in arcs}) >= SPEAKS_IN_HOPS)
     on_pins = {r for r in (cond.net_at(at, pin_tol, min_net) for at in pin_points(circuit)) if r is not None}
     # only rails: a signal's name may be written anywhere, or read wrong off pixels,
     # and a rail is the only net whose pins the drawing joins by name alone

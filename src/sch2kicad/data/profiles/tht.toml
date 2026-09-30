@@ -115,6 +115,13 @@ type = "ic"
 pins = 16
 footprint = "Package_DIP:DIP-16_W7.62mm"
 
+# An on/off toggle is an SPDT with one throw unused: the house library has no
+# SPST, and KiCad's SW_SPST pins 1-2 land on a throw and the middle lug (pad 2,
+# the common), so the switch to order is the plain mini SPDT.
+[[footprints]]
+type = "switch_spst"
+footprint = "2025_PedalDivision_Switches:Mini Switch SPDT"
+
 [flags]
 GND = "2025_PedalDivision_Flags:GND"
 VCC = "2025_PedalDivision_Flags:VCC"

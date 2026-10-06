@@ -119,6 +119,29 @@ def test_drawn_power_units_are_placed_where_drawn():
     assert ic3.pinmap["V+"] == "7" and ic3.pinmap["V-"] == "4"
 
 
+def test_single_opamp_by_part_number():
+    """Colonel Angus's CA3140 is a stock KiCad symbol on the DIP-8 (SOIC-8 for smd). A single
+    op-amp the table does not know is a problem the build reports, with nothing wired to the
+    placeholder: drawn on a resistor's pins, it used to stop the layout with a KeyError."""
+    from sch2kicad.circuit import from_dict
+    from sch2kicad.parts import PartResolver, load_profile
+
+    def part(number):
+        return from_dict({"name": "t", "parts": [{"ref": "U1", "type": "opamp_single", "part": number,
+                                                    "pins": pins, "supply": supply}]}).parts[0]
+    pins = {"+": ["U1_NI", 545, 322], "-": ["U1_INV", 545, 301], "out": ["U1_OUT", 577, 307]}
+    supply = {"V+": "VCC", "V-": "GND"}
+    for prof in ("tht", "smd"):
+        r = PartResolver(load_profile(prof), SymbolResolver()).resolve(
+            part("CA3140"))
+        assert r.lib_id == "Amplifier_Operational:CA3140" and r.problems == [], r.problems
+        assert r.pinmap["+"] == "3" and r.pinmap["-"] == "2" and r.pinmap["out"] == "6"
+    r = PartResolver(load_profile("tht"), SymbolResolver()).resolve(
+        part("XYZ3141"))
+    assert any("no symbol known for 'XYZ3141'" in p for p in r.problems)
+    assert r.pinmap == {}
+
+
 def test_ic_units_follow_pin_numbers():
     """The Tri-Vibe's LM13700: units are chosen by pin number, and on our own symbol they
     come out in the order the datasheet and the drawing both use — IC4A really is unit A.

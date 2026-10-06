@@ -371,7 +371,8 @@ class PartResolver:
             lib_id = self._symbol_for_type(ptype) or ""
             if ptype not in KNOWN_TYPES and not lib_id:
                 problems.append(f"{part.ref}: unknown part type {ptype!r}")
-        if not lib_id:
+        placeholder = not lib_id
+        if placeholder:
             lib_id = "Device:R"  # placeholder so the build can still draw something
             problems.append(f"{part.ref}: no symbol resolved; drew a placeholder")
         try:
@@ -380,6 +381,7 @@ class PartResolver:
             problems.append(f"{part.ref}: {e}")
             lib_id = "Device:R"
             sym = self.symbols.get(lib_id)
+            placeholder = True
 
         # ---- unit
         unit = 1
@@ -411,7 +413,8 @@ class PartResolver:
         # an op-amp entry with a supply and no signal pins is a power unit the source
         # draws on its own (PedalPCB's "IC1" with pins 8/4)
         power_only = ptype in OPAMPS | {"ic", "lm386"} and bool(part.supply) and not part.pins
-        if power_only:
+        if power_only or placeholder:
+            # a placeholder's pins are not the part's, so nothing is wired to them
             pinmap, swappable, p3 = {}, [], []
         else:
             pinmap, swappable, p3 = self._pinmap(part, sym, unit, pinout)

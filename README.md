@@ -162,11 +162,11 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   shorter than any wire the tracer takes — the dot or the stub is a conductor of
   its own, as long as ink of another colour leaves it: on a sheet in one colour a
   part's leads are wire ink already, and a "dot" with no wire is lettering (the
-  Abductor II). All twenty-nine sheets,
-  from eighteen publishers, are checked against their drawings, and **3699 of
-  the 3702 pins they draw are traced** — two of the other three are rheostat
+  Abductor II). All thirty sheets,
+  from eighteen publishers, are checked against their drawings, and **3821 of
+  the 3824 pins they draw are traced** — two of the other three are rheostat
   wipers the sheet ties inside the part and never draws, the third a lead that
-  runs inside a pot's reach and touches none of its pins: twenty-five agree
+  runs inside a pot's reach and touches none of its pins: twenty-six agree
   outright, and nine disagreements stand on the other four — every one of them the drawing's own
   doing, never a join the tracer invented: an off-page connector drawn twice, a
   jack whose normalling lug is joined until a plug lifts it, a pair of pads joined

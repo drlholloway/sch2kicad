@@ -162,15 +162,15 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   shorter than any wire the tracer takes — the dot or the stub is a conductor of
   its own, as long as ink of another colour leaves it: on a sheet in one colour a
   part's leads are wire ink already, and a "dot" with no wire is lettering (the
-  Abductor II). All thirty-one sheets,
-  from eighteen publishers, are checked against their drawings, and **3915 of
-  the 3918 pins they draw are traced** — two of the other three are rheostat
+  Abductor II). All thirty-two sheets,
+  from eighteen publishers, are checked against their drawings, and **4108 of
+  the 4111 pins they draw are traced** — two of the other three are rheostat
   wipers the sheet ties inside the part and never draws, the third a lead that
   runs inside a pot's reach and touches none of its pins: twenty-seven agree
-  outright, and nine disagreements stand on the other four — every one of them the drawing's own
+  outright, and ten disagreements stand on the other five — every one of them the drawing's own
   doing, never a join the tracer invented: an off-page connector drawn twice, a
   jack whose normalling lug is joined until a plug lifts it, a pair of pads joined
-  only by a label, a battery with its wire drawn straight through the cells. They are recorded
+  only by a label, an LFO bus joined only by its name flags, a battery with its wire drawn straight through the cells. They are recorded
   rather than silenced by moving a pin. Planted faults — a pin moved to another
   net, a crossing read as a junction, two rails mixed up, a resistor shorted end
   to end, a ground pin read as the supply — are caught.

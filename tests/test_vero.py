@@ -13,7 +13,7 @@ import pytest
 
 from sch2kicad.circuit import from_dict, load
 from sch2kicad.vero import (check_circuit, compare_seen, derive, from_dict as board_from_dict,
-                            load_board, look, skeleton)
+                            load_board, look, skeleton, standard_name)
 
 HERE = Path(__file__).resolve().parent
 CIRCUITS = HERE.parent / "samples" / "circuits"
@@ -452,3 +452,11 @@ def test_the_sabrotone_style_finds_its_grid_cuts_and_links(tmp_path):
     assert g and abs(g.x0 - 30) < 1 and abs(g.dx - 20) < 0.6, g
     assert {h.name for h in seen.cuts} == {"B4"}
     assert [(x.name, y.name) for x, y in seen.links] == [("A7", "D7")]
+
+
+def test_a_negative_supply_wire_keeps_its_sign():
+    """Dirtbox's FY-2 Germanium is positive ground: its wires are "-9v" and "Ground+".
+    Read as an ordinary name, "-9v" lost its minus and became 9V."""
+    assert standard_name("-9v") == "-9V"
+    assert standard_name("Ground+") == "GND"
+    assert standard_name("9v") == "+9V"

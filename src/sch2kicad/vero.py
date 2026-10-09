@@ -39,7 +39,9 @@ _HOLE_LETTERS = re.compile(r"^([A-Z])([A-Z])$")
 # keeps its own name.
 _STANDARD = {"input": "IN", "in": "IN", "output": "OUT", "out": "OUT",
              "ground": "GND", "gnd": "GND", "0v": "GND",
-             "9v": "+9V", "+9v": "+9V", "9vdc": "+9V", "vcc": "+9V", "dc": "+9V", "power": "+9V"}
+             "9v": "+9V", "+9v": "+9V", "9vdc": "+9V", "vcc": "+9V", "dc": "+9V", "power": "+9V",
+             # a positive-ground germanium layout (Dirtbox's FY-2 Germanium): "-9v" and "Ground+"
+             "-9v": "-9V", "-9vdc": "-9V", "ground+": "GND", "gnd+": "GND"}
 
 # Op-amp units on the DIP package, as circuit.json names them: unit → pin → number.
 _DIP = {

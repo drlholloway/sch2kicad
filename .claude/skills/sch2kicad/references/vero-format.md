@@ -219,6 +219,34 @@ Off-board wiring notes under the layout can be wrong. Read the post's comments
 for corrections ("Surge 2 connects to Feedback 2, not Feedback 3"), and ask the
 user which to follow.
 
+Vintage Japanese circuits (the Shin-ei batch) rarely have a designer schematic with
+refs. Look for the factory sheet or a redraw: tonehome.de (photos of base-plate
+diagrams), Fuzz Central (fuzzcentral.ssguitar.com), a Deadend Fx or Aion FX build
+doc of the same circuit, or another layout site's version read as a second
+`board.json` and compared net for net (the OB-28 against SabroTone's). Number
+the resistors and capacitors yourself when none of them print refs.
+freestompboxes, diystompboxes and the PedalPCB forum are behind bot checks for
+curl; use the browser or do without.
+
+- **Positive ground** (germanium PNP, the FY-2 Germanium): the wires are `-9v`
+  and `Ground+`, which read as nets `-9V` and `GND`. Set the user's lead order
+  with `"pinout"` on each transistor; the layout's body letters give the holes.
+- **A 4P4T rotary** (the ME-7's selector, lugs A–D and 1–16) is one `ic` with
+  `"part": "4P4T"`, which resolves to `sch2kicad:SW_Rotary_4x4`. Throws 1–16 are
+  pins 1–16 (pole A 1–4, B 5–8, C 9–12, D 13–16), and the commons A–D are pins
+  17–20, on a 1x20 row of off-board wiring pads. Draw it a pole at a time, as
+  units A–D, like the dual-gang pot.
+- **A transformer used as a choke** (the 42TM013 in Shin-ei wahs) uses only the
+  primary's outer leads. Its other pins sit alone on their strips (a warning),
+  and the image check reads the outline's vertical sides as links. Both are
+  expected; say so.
+- **Off-board notes** in older layouts carry typos ("Fuzz Adjust 2 to Balance 3"
+  with no Balance pot; "Fuzz Sw 3 to Fuzz Sw 3"). Work out what each means from
+  the circuit, and never wire one that would short a stage (the 6Tr Fuzz Wah's
+  "Volume 2 to Fuzz Sw 4" puts the boost's input on its output).
+- **The Unverified tag** means nobody has reported a working build. Read such a
+  layout with suspicion: the 2024 6Tr Fuzz Wah's wah half has no bias as drawn.
+
 ## What the image check can and cannot see
 
 It finds the hole grid from the copper, then looks for:

@@ -237,6 +237,29 @@ def test_the_btdr3h_reverb_brick_is_a_shipped_symbol(tmp_path):
         assert r.footprint == "Connector_PinSocket_2.54mm:PinSocket_1x10_P2.54mm_Vertical"
 
 
+def test_a_4p4t_rotary_is_a_shipped_symbol_a_unit_a_pole(tmp_path):
+    """Shin-ei's ME-7 selects its effect on a 4P4T rotary (Dirtbox's lugs A-D and 1-16).
+    Neither KiCad nor the house library has one; ours is a unit a pole, its throws
+    pins 1-16 and its commons A-D pins 17-20, on a row of off-board wiring pads."""
+    import json as _json
+    parts = []
+    for u, pole in enumerate("ABCD"):
+        pins = {str(17 + u): [f"COM_{pole}", 100, 100 + 40 * u]}
+        pins.update({str(4 * u + k): [f"T{4 * u + k}", 120, 100 + 40 * u + 5 * k] for k in range(1, 5)})
+        parts.append({"ref": "SW1", "unit": pole, "type": "ic", "value": "4P4T", "part": "4P4T", "pins": pins})
+    f = tmp_path / "selector.circuit.json"
+    f.write_text(_json.dumps({"schema": "sch2kicad/circuit@1", "name": "Selector", "parts": parts}))
+    from sch2kicad.circuit import load
+    from sch2kicad.parts import load_profile, resolve_all
+    for r in resolve_all(load(f), load_profile("tht"), SymbolResolver()):
+        assert r.lib_id == "sch2kicad:SW_Rotary_4x4" and r.problems == []
+    rep = verify(build(f, tmp_path / "board").sch, render=False)
+    assert rep.netlist_ok, rep.netlist_diffs
+    assert rep.footprint_problems == []
+    # the sheet's copy must read back as the library's (a Datasheet of "~" did not)
+    assert not [w for w in rep.erc_warnings if "lib_symbol_mismatch" in w]
+
+
 def test_open_driver_on_a_power_net_is_allowed(tmp_path):
     """The house transistor symbols call collector and emitter open drivers; a grounded
     emitter then meets the net's PWR_FLAG, which KiCad's default matrix calls an error."""

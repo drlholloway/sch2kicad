@@ -53,7 +53,9 @@ class Row:
 
     @property
     def is_pot(self) -> bool:
-        return bool(re.search(r"\bpot\b|potentiometer|trimmer|trimpot", self.type, re.I))
+        # FuzzDog's lists give no type column: a value with a taper letter is a pot
+        return bool(re.search(r"\bpot\b|potentiometer|trimmer|trimpot", self.type, re.I)) or \
+            (not self.type and parse_value(self.value) is not None and bool(_taper(self.value)))
 
 
 def _lines(words: list, tol: float = 2.5) -> list[tuple[float, list]]:

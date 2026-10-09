@@ -218,6 +218,32 @@ def fold_tied_outputs(errors: list[str], nets: dict[str, set[str]],
     return keep, notes
 
 
+def fold_strapped_inputs(errors: list[str], nets: dict[str, set[str]],
+                         pintypes: dict[str, str]) -> tuple[list[str], list[str]]:
+    """An LM386's gain pins, 1 and 8, strapped together for gain 200 (the Seppuku
+    Octave Drone and Space Fuzz) make a net of nothing but that chip's own inputs, so
+    KiCad's ERC finds nothing driving it. Where every pin on the net is an input of the
+    one part, the strap is the drawing's and the complaint becomes a note; a net with
+    any other part on it stays an error."""
+    import re
+    keep: list[str] = []
+    folded: dict[str, list[str]] = {}
+    for e in errors:
+        m = re.match(r"\[pin_not_driven\].* Symbol (\S+) Pin (\S+) ", e)
+        if m:
+            node = f"{m.group(1)}.{m.group(2)}"
+            net = next((name for name, nodes in nets.items() if node in nodes), None)
+            nodes = nets.get(net, set())
+            if (len(nodes) > 1 and len({n.split(".")[0] for n in nodes}) == 1
+                    and all(pintypes.get(n) == "input" for n in nodes)):
+                folded.setdefault(net, sorted(nodes))
+                continue
+        keep.append(e)
+    notes = [f"{' and '.join(nodes)} are strapped together on {net}, as drawn; nothing else is on "
+             f"that net, so KiCad's ERC finds no driver" for net, nodes in folded.items()]
+    return keep, notes
+
+
 def fold_pads_only(errors: list[str], nets: dict[str, set[str]],
                    pads: set[str]) -> tuple[list[str], list[str]]:
     """A net that joins nothing but pads is a wire leaving the board and coming back:
@@ -238,6 +264,33 @@ def fold_pads_only(errors: list[str], nets: dict[str, set[str]],
         keep.append(e)
     notes = [f"{', '.join(nodes)} join only pads (an off-board wire), so nothing on the board drives "
              f"them; KiCad's ERC says so" for nodes in folded.values()]
+    return keep, notes
+
+
+def fold_fed_off_board(errors: list[str], nets: dict[str, set[str]], pads: set[str],
+                       pintypes: dict[str, str]) -> tuple[list[str], list[str]]:
+    """The Seppuku Memory Loss runs its input jack straight into the LM386's pin 2,
+    with no cap or resistor: a net of the IN pad and a chip input. What drives it is
+    the guitar, off the board, so the complaint becomes a note. Where anything else on
+    the board shares the net (a resistor, an output) it stays for the other rules."""
+    import re
+    keep: list[str] = []
+    folded: dict[str, list[str]] = {}
+    for e in errors:
+        m = re.match(r"\[pin_not_driven\].* Symbol (\S+) Pin (\S+) ", e)
+        if m and pads:
+            node = f"{m.group(1)}.{m.group(2)}"
+            net = next((name for name, nodes in nets.items() if node in nodes), None)
+            nodes = nets.get(net, set())
+            on_pads = sorted(n for n in nodes if n.split(".")[0] in pads)
+            rest = [n for n in nodes if n.split(".")[0] not in pads]
+            if on_pads and rest and all(pintypes.get(n) == "input" for n in rest):
+                folded.setdefault(net, sorted(rest))
+                continue
+        keep.append(e)
+    notes = [f"{', '.join(ins)} {'is' if len(ins) == 1 else 'are'} fed only through a pad, from off the "
+             f"board, so nothing on the board drives {'it' if len(ins) == 1 else 'them'}; KiCad's ERC says so"
+             for ins in folded.values()]
     return keep, notes
 
 
@@ -428,8 +481,12 @@ def verify(sch: Path, build_json: Path | None = None, source_image: Path | None 
     rep.notes += open_notes
     rep.erc_errors, tied_notes = fold_tied_outputs(rep.erc_errors, nets, pintypes)
     rep.notes += tied_notes
+    rep.erc_errors, strap_notes = fold_strapped_inputs(rep.erc_errors, nets, pintypes)
+    rep.notes += strap_notes
     rep.erc_errors, pad_notes = fold_pads_only(rep.erc_errors, nets, set(meta.get("pads") or ()))
     rep.notes += pad_notes
+    rep.erc_errors, fed_notes = fold_fed_off_board(rep.erc_errors, nets, set(meta.get("pads") or ()), pintypes)
+    rep.notes += fed_notes
     rep.erc_warnings, rail_notes = fold_ground_on_rail(rep.erc_warnings, expected, set(meta.get("rails") or ()))
     rep.notes += rail_notes
     # a library symbol with pins off the 50 mil grid makes KiCad flag every pin and the

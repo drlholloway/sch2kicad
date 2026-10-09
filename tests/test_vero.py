@@ -370,3 +370,16 @@ def test_red_dot_cuts_and_blue_links_are_seen():
     read = {h for h, o in b.cuts if o is None}
     assert not (seen.cuts - read), sorted(h.name for h in seen.cuts - read)     # nothing invented
     assert {(x.name, y.name) for x, y in seen.links} >= {("ED", "FD"), ("CJ", "DJ"), ("EG", "HG"), ("LD", "MD")}
+
+
+def test_cut_colours_of_the_2019_layouts():
+    """The 2019 Dirtbox layouts (Octave Drone, Fuzz Overloader, Space Fuzz) draw cuts
+    pink, and the pink dims under a translucent chip, diode or resistor. Their magenta
+    film caps, the copper, a translucent red body over copper and a pink resistor are
+    not cuts."""
+    from sch2kicad.vero import _red
+    for cut in [(255, 0, 102), (188, 68, 116), (173, 28, 86), (213, 70, 153), (206, 81, 99),
+                (204, 0, 0), (190, 66, 66)]:
+        assert _red(cut), cut
+    for other in [(204, 0, 102), (255, 153, 51), (230, 75, 60), (255, 107, 71), (243, 102, 123)]:
+        assert not _red(other), other

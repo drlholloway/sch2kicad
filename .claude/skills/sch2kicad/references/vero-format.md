@@ -138,6 +138,20 @@ from the 2021 and 2026 ones:
 - links are blue, and two links meeting at a hole are marked with a black dot;
 - electrolytics are pink, with the negative side shaded grey.
 
+The 2019 layouts (Octave Drone, Fuzz Overloader, Space Fuzz) draw cuts as pink
+squares with a white dot, and film caps as red ovals or boxes. A film cap's lead
+hole drawn inside its oval can read as a cut ("the image shows a cut at BF"): look,
+and say so.
+
+A layout with no designer schematic often has other people's layouts of the same
+circuit (Tagboard Effects, Effects Layouts). They are a cross-check of the topology
+and of odd values ("1nF" printed on an electrolytic), not a source of truth: report
+the differences and keep what the layout prints until the user says otherwise.
+
+FuzzDog (pedalparts.co.uk) build docs are a good designer's schematic for clones
+(the Mind Warp is FuzzDog's Brain Bomb). Their parts lists have no type column; a
+value with a taper letter is read as a knob.
+
 Off-board wiring notes under the layout can be wrong. Read the post's comments
 for corrections ("Surge 2 connects to Feedback 2, not Feedback 3"), and ask the
 user which to follow.

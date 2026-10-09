@@ -446,6 +446,21 @@ def test_a_net_of_nothing_but_pads_is_not_an_erc_error():
     assert keep == errs[1:] and len(notes) == 1
 
 
+def test_a_chip_input_fed_only_from_a_pad_is_not_an_erc_error():
+    """The Seppuku Memory Loss wires its input jack straight to the LM386's pin 2: the
+    guitar drives it, off the board. A chip input on a net with no pad, or with a
+    pad and another part, stays an error."""
+    from sch2kicad.verify import fold_fed_off_board
+    errs = ["[pin_not_driven] Input pin not driven by any Output pins — Symbol IC1 Pin 2 [-, Input, Line]",
+            "[pin_not_driven] Input pin not driven by any Output pins — Symbol IC2 Pin 3 [+, Input, Line]",
+            "[pin_not_driven] Input pin not driven by any Output pins — Symbol IC3 Pin 3 [+, Input, Line]"]
+    nets = {"IN": {"IC1.2", "Switch_Connectors1.1"}, "X": {"IC2.3", "H2.1", "R4.2"}, "Y": {"IC3.3", "IC3.2"}}
+    pintypes = {"IC1.2": "input", "Switch_Connectors1.1": "input", "IC2.3": "input", "H2.1": "input",
+                "R4.2": "passive", "IC3.3": "input", "IC3.2": "input"}
+    keep, notes = fold_fed_off_board(errs, nets, {"Switch_Connectors1", "H2"}, pintypes)
+    assert keep == errs[1:] and len(notes) == 1 and "IC1.2 is fed" in notes[0]
+
+
 def test_one_parts_own_outputs_tied_together_are_not_an_erc_error():
     """The Pocket Comb ties the MN3207's two outputs, 7 and 8, as BBD circuits do. Two
     different parts' outputs on one net are still a short."""
@@ -456,6 +471,25 @@ def test_one_parts_own_outputs_tied_together_are_not_an_erc_error():
     pintypes = {"IC2.7": "output", "IC2.8": "output", "U1.1": "output", "U2.1": "output"}
     keep, notes = fold_tied_outputs(errs, nets, pintypes)
     assert keep == errs[1:] and len(notes) == 1
+
+
+def test_one_parts_own_inputs_strapped_together_are_not_an_erc_error():
+    """The Seppuku Space Fuzz straps the LM386's gain pins, 1 and 8, for gain 200: a
+    net of only that chip's inputs. An input on a net with another part (even another
+    chip's input), beside a pin that is not an input, or alone, stays an error."""
+    from sch2kicad.verify import fold_strapped_inputs
+    errs = ["[pin_not_driven] Input pin not driven by any Output pins — Symbol IC1 Pin 1 [GAIN, Input, Line]",
+            "[pin_not_driven] Input pin not driven by any Output pins — Symbol IC2 Pin 3 [+, Input, Line]",
+            "[pin_not_driven] Input pin not driven by any Output pins — Symbol IC3 Pin 2 [-, Input, Line]",
+            "[pin_not_driven] Input pin not driven by any Output pins — Symbol IC4 Pin 3 [+, Input, Line]",
+            "[pin_not_driven] Input pin not driven by any Output pins — Symbol IC6 Pin 1 [~, Input, Line]"]
+    nets = {"GAIN": {"IC1.1", "IC1.8"}, "X": {"IC2.3", "IC2.2", "R1.1"}, "Y": {"IC3.2"},
+            "Z": {"IC4.3", "IC5.3"}, "W": {"IC6.1", "IC6.5"}}
+    pintypes = {"IC1.1": "input", "IC1.8": "input", "IC2.3": "input", "IC2.2": "input",
+                "R1.1": "passive", "IC3.2": "input", "IC4.3": "input", "IC5.3": "input",
+                "IC6.1": "input", "IC6.5": "passive"}
+    keep, notes = fold_strapped_inputs(errs, nets, pintypes)
+    assert keep == errs[1:] and len(notes) == 1 and "IC1.1 and IC1.8" in notes[0]
 
 
 def test_a_chips_gnd_pin_on_a_declared_rail_is_not_an_erc_warning():

@@ -67,6 +67,18 @@ def test_check_agrees():
     assert any(w.startswith("LED ") for w in chk.warnings)
 
 
+def test_untyped_rows_with_a_taper_are_knobs():
+    """FuzzDog's Brain Bomb list has no type column: its BLEND 50KB is the layout's
+    DEPTH B50K, a knob named differently, not a part missing. An untyped 10K is not
+    a knob."""
+    parts = {"DEPTH": {"value": "B50K", "type": "pot", "label": "Depth"},
+             "R1": {"value": "10K", "type": "resistor"}}
+    chk = bom.check(parts, [{"ref": "BLEND", "value": "50KB"}, {"ref": "R1", "value": "10K"}])
+    assert chk.problems == [] and chk.matched == 2
+    assert any("knobs named differently" in w for w in chk.warnings)
+    assert not bom.Row("R9", "10K").is_pot
+
+
 def test_check_catches_a_misread_and_a_missing_part():
     parts = dict(PARTS, R1={"value": "2K2", "type": "resistor"})
     rows = ROWS + [{"ref": "R2", "value": "470K", "type": "Resistor, 1/4W"}]

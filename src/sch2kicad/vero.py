@@ -448,6 +448,15 @@ def _red(px) -> bool:
     """A cut's red, also seen through a translucent part drawn over it. A translucent
     red body over bare copper is orange-red, not this."""
     r, g, b = int(px[0]), int(px[1]), int(px[2])
+    # the 2019 Dirtbox layouts draw cuts pink, (255, 0, 102); their magenta film caps
+    # are darker, (204, 0, 102)
+    if r > 230 and g < 40 and 80 <= b <= 130:
+        return True
+    # ...and seen through a translucent chip, diode or resistor that pink dims and
+    # takes on the part's colour: (188, 68, 116), (173, 28, 86), (213, 70, 153),
+    # (206, 81, 99)
+    if r <= 230 and r - g >= 100 and 15 <= b - g <= 90 and r - b >= 55:
+        return True
     # pure, or seen through a grey chip body: (190, 66, 66), green and blue equal.
     # A translucent red body over copper keeps some of the copper's orange, its
     # green above its blue: (230, 75, 60), (255, 107, 71).

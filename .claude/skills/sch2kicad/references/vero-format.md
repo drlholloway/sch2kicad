@@ -169,6 +169,16 @@ Monster's 47Ω for 470K). Build the layout as drawn, so the board check holds, a
 a corrected copy beside it; ask the user which to keep. A stated count can be a
 typo too (Rattle Crow "12 cuts" with 11 drawn): count, and say so.
 
+When the user picks the designer's version over the layout (Lane usually does),
+keep both: `gen.py` writes the as-drawn `circuit.json` with `"board"`, and
+`gen.py final` applies the choices on top and writes `final/circuit.json` with no
+`"board"` (it no longer matches the stripboard). Build `final/` as the project to
+use, and say in its notes which choices were made and what the layout had.
+
+A vactrol drawn as an LED and an LDR is one part on the board: an `ic` with
+`"lib_id": "Isolator:VTL5C"`, `"footprint": "OptoDevice:PerkinElmer_VTL5C"`,
+pins 1 (LED −), 2 (LED +), 3 and 4 (the LDR).
+
 An off-board wire's net keeps its board name in circuit.json (`BYPASS_LED+`, not
 a tidier `LED+`): the board check matches wires by name.
 

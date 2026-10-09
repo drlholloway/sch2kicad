@@ -370,11 +370,12 @@ def test_the_house_quad_is_wired_like_every_other_quad(sym):
     would not swap a signal, it would cook the chip."""
     s = SymbolResolver().get(sym)
     assert s.unit_count == 5
-    got = {u: {p.name: p.number for p in s.pins_for(u)} for u in range(1, 6)}
-    assert got[1] == {"~": "1", "-": "2", "+": "3"}
-    assert got[2] == {"+": "5", "-": "6", "~": "7"}
-    assert got[3] == {"~": "8", "-": "9", "+": "10"}
-    assert got[4] == {"+": "12", "-": "13", "~": "14"}
+    # an output is known by its type, as the builder finds it: its name is blank
+    got = {u: {"out" if p.etype == "output" else p.name: p.number for p in s.pins_for(u)} for u in range(1, 6)}
+    assert got[1] == {"out": "1", "-": "2", "+": "3"}
+    assert got[2] == {"+": "5", "-": "6", "out": "7"}
+    assert got[3] == {"out": "8", "-": "9", "+": "10"}
+    assert got[4] == {"+": "12", "-": "13", "out": "14"}
     assert got[5] == {"V-": "11", "V+": "4"}
 
 

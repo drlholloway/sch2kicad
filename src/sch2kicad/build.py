@@ -642,11 +642,24 @@ class Builder:
         """Each signal net's drawn wires (source pixels), or None with no drawing to hand."""
         if not hasattr(self, "_drawn_cache"):
             from .trace import drawn_wires
-            try:
-                self._drawn_cache = drawn_wires(self.c)
-            except FileNotFoundError:
-                self._drawn_cache = None
+            self._drawn_cache = self._trace(drawn_wires)
         return self._drawn_cache
+
+    def _trace(self, read):
+        """Read the drawing the circuit's positions are pixels of, or None.
+
+        A reading from a stripboard has no such drawing: its positions are a schematic
+        drawn for it, and its image is the board, whose strips are not wires (verify
+        checks it against the board instead, for the same reason). And what the trace
+        gives the builder is how it looks, never what it connects, so a trace that
+        fails leaves the sheet laid out as it was before there were traces at all.
+        """
+        if self.c.board:
+            return None
+        try:
+            return read(self.c)
+        except Exception:
+            return None
 
     def _guides(self, terms: dict[str, list[Terminal]]) -> dict[str, set[Cell]]:
         """The grid cells each net's drawn wires fall on, for the router to follow.
@@ -842,9 +855,8 @@ class Builder:
         Returns terminal owner -> the coordinate (across the flag's axis) to end on.
         """
         from .trace import rail_ends
-        try:
-            ends = rail_ends(self.c)
-        except FileNotFoundError:       # no source beside the reading: flags as before
+        ends = self._trace(rail_ends)
+        if ends is None:                # no drawing to read: flags as before
             return {}
         key_of = {}
         for pl in self.layout.placed:

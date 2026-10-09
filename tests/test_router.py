@@ -121,3 +121,12 @@ def test_pins_the_drawing_lines_up_stay_lined_up(tmp_path):
                         return pl.pin_pos(pl.pinmap[sem])[0]
     assert x("C8", "Q2_C") == x("D1", "Q2_C") == x("D2", "Q2_C")
     assert x("C10", "Q3_D") == x("D3", "Q3_D") == x("D4", "Q3_D")
+
+
+@_needs_drawing("memory-lapse")
+def test_a_stripboard_reading_takes_no_guide_from_its_board():
+    """Memory Lapse is drawn from a Dirtbox vero layout: its positions are a schematic
+    drawn for it, and its image is the board. Traced, the board's copper strips were
+    read as wires to follow and ground leads to line up."""
+    b = Builder(load(SAMPLES / "circuits" / "memory-lapse.circuit.json"), load_profile("tht"), "vero")
+    assert b._drawn() is None and b._flag_rows({}) == {}

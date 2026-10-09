@@ -281,6 +281,10 @@ def same_value(ptype: str, drawn: str, listed: str, listed_type: str = "") -> bo
         if ptype in _OHMS:
             # no pedal has a milliohm resistor: Deadend Fx list the Ripplet's 2.2M as "2m2"
             drawn, listed = (re.sub(r"(?<=\d)m(?=\d|[ABCW]?$)", "M", v) for v in (drawn, listed))
+        elif ptype.startswith("capacitor"):
+            # and no capacitor is in mega or newtons: the Deuteronomy's parts list writes 47N
+            drawn, listed = (re.sub(r"(?<=\d)[PNU](?=\d|F?$)", lambda m: m.group().lower(), v)
+                             for v in (drawn, listed))
         a, b = parse_value(drawn), parse_value(listed)
         if a is None or b is None:
             return None

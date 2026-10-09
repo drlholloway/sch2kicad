@@ -41,6 +41,16 @@ def test_a_lowercase_m_on_a_resistor_is_mega():
     assert bom.same_value("capacitor", "2.2uF", "2m2") is False      # not on a capacitor
 
 
+def test_a_capital_n_p_or_u_on_a_capacitor_is_its_unit():
+    """Deadend Fx's Deuteronomy list writes C3 as "47N"; nothing else is read as N."""
+    assert bom.same_value("capacitor", "47nF", "47N")
+    assert bom.same_value("capacitor", "4n7", "4N7")
+    assert bom.same_value("capacitor", "100pF", "100P")
+    assert bom.same_value("capacitor_polarized", "10uF", "10UF")
+    assert bom.same_value("capacitor", "47nF", "47P") is False
+    assert bom.same_value("diode", "1N4148", "1N4001") is False         # diodes untouched
+
+
 def test_a_taper_written_as_a_word():
     """Deadastronaut's parts list writes tapers as words ("1M LOG") and letters
     ("47kB") on one page, and the Abductor II's sheet writes "2M lin". The word

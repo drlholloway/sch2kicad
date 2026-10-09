@@ -35,6 +35,7 @@ _GRID_REF = re.compile(r"^[A-Za-z]{1,8}\d{0,3}$")
 # margin ("The", "the", "a") is not mistaken for one
 _GRID_COL_REF = re.compile(r"^([A-Za-z]{1,4}\d{1,3}|[A-Z]{2,10})$")
 VALUE_TYPES = {"resistor", "capacitor", "capacitor_polarized", "inductor", "ldr", "pot", "trimmer"}
+_OHMS = {"resistor", "ldr", "pot", "trimmer"}
 PART_TYPES = {"npn", "pnp", "njfet", "pjfet", "nmos", "pmos", "diode", "zener", "schottky",
               "opamp_single", "opamp_dual", "opamp_quad", "lm386", "ic", "transformer"}
 
@@ -277,6 +278,9 @@ def same_value(ptype: str, drawn: str, listed: str, listed_type: str = "") -> bo
         return a == b
     if ptype in VALUE_TYPES:
         drawn, listed = _taper_word(drawn), _taper_word(listed)
+        if ptype in _OHMS:
+            # no pedal has a milliohm resistor: Deadend Fx list the Ripplet's 2.2M as "2m2"
+            drawn, listed = (re.sub(r"(?<=\d)m(?=\d|[ABCW]?$)", "M", v) for v in (drawn, listed))
         a, b = parse_value(drawn), parse_value(listed)
         if a is None or b is None:
             return None

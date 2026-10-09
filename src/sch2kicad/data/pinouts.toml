@@ -39,9 +39,11 @@
 "2N3704" = "ECB"      # ON Semi / Central datasheets; the Fjord Fuzz Berserk schematic says ECB
 "S8050" = "EBC"       # UTC / Wing Shing TO-92 datasheets; the Fjord Fuzz Freia layout prints E B C
 "P2N2222A" = "CBE"
+"PN100" = "EBC"       # Fairchild TO-92 datasheet; the Lastgasp 86 Oscillo Fuzz layout prints C B E
 
 [fet]
 "J201" = "DSG"
+"2SK30A" = "SGD"      # Xiaosheng 2SK30A datasheet (TO-92: S 1, G 2, D 3); the Lastgasp Ripplet layout prints D G S
 "J113" = "DSG"
 "2N5457" = "DSG"
 "2N5458" = "DSG"

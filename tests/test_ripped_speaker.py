@@ -196,6 +196,28 @@ def test_shipped_symbol_library_travels_with_the_project(tmp_path):
     assert 'name "sch2kicad"' in (out / "sym-lib-table").read_text()
 
 
+@pytest.mark.parametrize("part", ["LM565CN", "NE565N"])
+def test_the_lm565_pll_is_a_shipped_symbol(tmp_path, part):
+    """KiCad has no LM565 (the Sick Pitch King Jr.'s PLL): ours is pinned as TI and
+    Signetics number it, V- on 1 and V+ on 10, and lands on a DIP-14."""
+    import json as _json
+    from sch2kicad.circuit import load
+    from sch2kicad.parts import load_profile, resolve_all
+    pins = {"1": "GND", "2": "IN", "3": "GND", "4": "VCO", "5": "VCO", "6": "REF", "7": "REF",
+            "8": "+9V", "9": "CT", "10": "+9V", "11": "NC", "12": "NC", "13": "NC", "14": "NC"}
+    f = tmp_path / "pll.circuit.json"
+    f.write_text(_json.dumps({"schema": "sch2kicad/circuit@1", "name": "PLL", "parts": [
+        {"ref": "IC1", "type": "ic", "value": part, "part": part,
+         "pins": {k: [n, 100 + 10 * i, 100] for i, (k, n) in enumerate(pins.items())}}]}))
+    feet = {}
+    for profile in ("tht", "smd"):
+        r = resolve_all(load(f), load_profile(profile), SymbolResolver())[0]
+        assert r.lib_id == "sch2kicad:LM565"
+        assert r.problems == []
+        feet[profile] = r.footprint
+    assert feet["tht"] == "2025_PedalDivision_OpAmps:DIP-14_W7.62mm"
+
+
 def test_open_driver_on_a_power_net_is_allowed(tmp_path):
     """The house transistor symbols call collector and emitter open drivers; a grounded
     emitter then meets the net's PWR_FLAG, which KiCad's default matrix calls an error."""

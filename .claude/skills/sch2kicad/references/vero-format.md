@@ -154,6 +154,24 @@ circuit (Tagboard Effects, Effects Layouts). They are a cross-check of the topol
 and of odd values ("1nF" printed on an electrolytic), not a source of truth: report
 the differences and keep what the layout prints until the user says otherwise.
 
+Deadend Fx build docs (Google Drive PDFs, linked under many Dirtbox clones) are
+the usual designer's schematic: vector, schematic on page 4 (sometimes 4 and 5),
+parts list as an image on page 2, so type the `bom` rows in yourself. Their refs
+win. They routinely differ from the layout in the same few ways, all kept as the
+board has them and noted: a 1N4001 across the supply where Dirtbox puts a 1N5817
+in series; a status-LED zener and resistor ("CLR") off the board; an expression
+jack left out; extra trimmers grounded; an op-amp's halves swapped. Dirtbox
+numbers a toggle's outer lugs the other way round from Deadend.
+
+The post's comments can show the layout itself is wrong (the Sick Pitch King Jr.:
+a link shorting a switch, a cap with a dangling end, two parts missing, the Green
+Monster's 47Ω for 470K). Build the layout as drawn, so the board check holds, and
+a corrected copy beside it; ask the user which to keep. A stated count can be a
+typo too (Rattle Crow "12 cuts" with 11 drawn): count, and say so.
+
+An off-board wire's net keeps its board name in circuit.json (`BYPASS_LED+`, not
+a tidier `LED+`): the board check matches wires by name.
+
 FuzzDog (pedalparts.co.uk) build docs are a good designer's schematic for clones
 (the Mind Warp is FuzzDog's Brain Bomb). Their parts lists have no type column; a
 value with a taper letter is read as a knob.

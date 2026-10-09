@@ -31,6 +31,16 @@ def test_same_value():
     assert bom.same_value("led", "3mm red LED", "5mm") is None
 
 
+def test_a_lowercase_m_on_a_resistor_is_mega():
+    """Deadend Fx list the Ripplet's 2.2M as "2m2". Read as milli it could never
+    agree; no pedal has a milliohm part, so on a resistance m is M."""
+    assert bom.same_value("resistor", "2.2M", "2m2")
+    assert bom.same_value("resistor", "4M7", "4m7")
+    assert bom.same_value("pot", "B1M", "1mB")
+    assert bom.same_value("resistor", "2.2K", "2m2") is False
+    assert bom.same_value("capacitor", "2.2uF", "2m2") is False      # not on a capacitor
+
+
 def test_a_taper_written_as_a_word():
     """Deadastronaut's parts list writes tapers as words ("1M LOG") and letters
     ("47kB") on one page, and the Abductor II's sheet writes "2M lin". The word

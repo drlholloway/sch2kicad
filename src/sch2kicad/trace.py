@@ -1590,6 +1590,31 @@ def crosscheck_circuit(circuit, doc: Path | None = None) -> Crosscheck:
     ``ingest.json`` beside the circuit says which source it was: a page of vectors
     is read as vectors, anything else from the pixels of ``source.png``.
     """
+    return _traced(circuit, doc)[0]
+
+
+def drawn_wires(circuit, doc: Path | None = None) -> dict[str, list[Seg]]:
+    """Each signal net's wires as the drawing runs them, in source pixels.
+
+    The builder routes along these, so a trunk the drawing puts down one column
+    stays in that column instead of wherever the shortest tree lands it. Only a
+    traced net that holds one net's pins and nothing else's counts: a guide is
+    cosmetic, and a merged or unclaimed run says nothing worth following.
+    """
+    rep, cond = _traced(circuit, doc)
+    nets: dict[int, set[str]] = defaultdict(set)
+    for net, root in rep.pins.values():
+        if root is not None:
+            nets[root].add(net)
+    out: dict[str, list[Seg]] = defaultdict(list)
+    for i, s in enumerate(cond.segs):
+        owners = nets.get(cond.find(i), set())
+        if len(owners) == 1:
+            out[next(iter(owners))].append(s)
+    return dict(out)
+
+
+def _traced(circuit, doc: Path | None = None) -> tuple[Crosscheck, Conductors]:
     work = circuit.path.parent if circuit.path else Path(".")
     meta = {}
     if (work / "ingest.json").exists():
@@ -1644,4 +1669,4 @@ def crosscheck_circuit(circuit, doc: Path | None = None) -> Crosscheck:
     rails = [n for n in circuit.all_net_names() if circuit.net_kind(n) in ("power", "ground")]
     named = name_nets(cond, _not_pin_names(read_text(work), circuit), rails, on_pins, ink)
     return crosscheck(circuit, cond, named, pin_tol=pin_tol, min_net=min_net,
-                      reach=BODY_REACH * touch)
+                      reach=BODY_REACH * touch), cond

@@ -19,6 +19,15 @@ from dataclasses import dataclass, field
 from .geometry import GRID
 
 Cell = tuple[int, int]
+# what a step off the drawing's own wire for this net costs: enough that a trunk
+# runs down the column the drawing gave it rather than the one the shortest tree
+# finds, little enough that a guide a grid out of true never buys a detour
+OFF_GUIDE = 0.25
+# a bend this many cells or fewer after the last one is a jog: a step that reads as
+# a slip of the pen rather than a route, so it pays on top of the two bends
+JOG_RUN, JOG = 3, 3.0
+# how many of a net's pins (nearest its middle first) a tree is tried from
+MAX_STARTS = 6
 H, V = 1, 2
 DIRS = {(1, 0): H, (-1, 0): H, (0, 1): V, (0, -1): V}
 
@@ -92,6 +101,7 @@ class Router:
         self.occ: dict[Cell, dict[str, set[str]]] = {}   # cell -> net -> {"h","v","n"}
         self.soft: dict[Cell, float] = {}            # cosmetic cost (near other things)
         self.net_cells: dict[str, set[Cell]] = {}
+        self.guide: dict[str, set[Cell]] = {}        # net -> cells the drawing runs its wires on
 
     # ............................................................ obstacles
     def block_box(self, box: tuple[float, float, float, float], inflate: float = 0.6,
@@ -193,8 +203,8 @@ class Router:
         return any(n != net for n in self.occ.get(c, {}))
 
     def search(self, net: str, start: Cell, first: tuple[int, int] | None, targets: set[Cell],
-               box_pad: int) -> list[Cell] | None:
-        """Cheapest path from ``start`` to any of ``targets``.
+               box_pad: int) -> tuple[list[Cell], float] | None:
+        """Cheapest path from ``start`` to any of ``targets``, and what it cost.
 
         ``first`` is the direction the wire must set off in — a pin's own lead, so the
         wire reads as continuing it. ``None`` lets it turn at the tip instead, for a pin
@@ -215,15 +225,18 @@ class Router:
             return dx + dy
 
         BEND, CROSS = 2.0, 3.0
-        # state: (cell, incoming move vector)
+        guide = self.guide.get(net)
+        # state: (cell, incoming move vector, cells run since the last bend, capped);
+        # a wire leaves its start as if it had come a long way, so turning just past
+        # a pin is an ordinary bend and only a step between two bends is a jog
         counter = itertools.count()
-        start_state = (start, (0, 0))
+        start_state = (start, (0, 0), JOG_RUN)
         g = {start_state: 0.0}
         prev: dict = {}
         heap = [(h(start), next(counter), start_state)]
         while heap:
             _, _, state = heapq.heappop(heap)
-            c, inc = state
+            c, inc, run = state
             gc = g[state]
             if c in targets and c != start:
                 path = [c]
@@ -231,7 +244,7 @@ class Router:
                 while s in prev:
                     s = prev[s]
                     path.append(s[0])
-                return path[::-1]
+                return path[::-1], gc
             crossing_here = c != start and self._crossing(net, c)
             for d in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                 if inc == (0, 0) and first is not None and d != first:
@@ -250,11 +263,14 @@ class Router:
                 if not self._enter_ok(net, nc, move, final=is_target):
                     continue
                 cost = gc + 1.0 + self.soft.get(nc, 0.0)
-                if inc != (0, 0) and d != inc:
-                    cost += BEND
+                turned = inc != (0, 0) and d != inc
+                if turned:
+                    cost += BEND + (JOG if run < JOG_RUN else 0.0)
                 if self._crossing(net, nc):
                     cost += CROSS
-                ns = (nc, d)
+                if guide and nc not in guide:
+                    cost += OFF_GUIDE
+                ns = (nc, d, 1 if turned else min(run + 1, JOG_RUN))
                 if cost < g.get(ns, float("inf")):
                     g[ns] = cost
                     prev[ns] = state
@@ -263,6 +279,15 @@ class Router:
 
     # .............................................................. per net
     def route_net(self, net: str, terms: list[Terminal], turn_at_tip: bool = False) -> NetRoute:
+        """Join a net's terminals as one tree, grown from whichever pin makes it cheapest.
+
+        The tree is grown greedily, nearest pin first, so the pin it starts from
+        settles where the trunk runs: started at a resistor's end, a collector's column
+        jogs over to meet it; started at the collector, the resistor's lead reaches
+        across instead. Each start is tried and the cheapest tree kept — the same costs
+        the search pays (length, bends, jogs, crossings, distance off the drawing's own
+        wire), so the choice is the one the search would make if it saw the whole net.
+        """
         result = NetRoute(net)
         if len(terms) < 2:
             return result
@@ -271,36 +296,54 @@ class Router:
         cx = sum(t.cell[0] for t in terms) / len(terms)
         cy = sum(t.cell[1] for t in terms) / len(terms)
         order = sorted(terms, key=lambda t: (t.cell not in existing, abs(t.cell[0] - cx) + abs(t.cell[1] - cy)))
-        first = order[0]
-        tree: set[Cell] = {first.cell} | existing
+        # a tree seeded by a flag's stub starts there; otherwise any pin may start it
+        starts = order[:1] if order[0].cell in existing else order[:MAX_STARTS]
+        best = None
+        for first in starts:
+            grown = self._grow(net, first, [t for t in order if t is not first], existing, turn_at_tip)
+            key = (len(grown[1]), grown[2])     # fewest pins left out, then cheapest
+            if best is None or key < best[0]:
+                best = (key, grown, first)
+        (segs, failed, _), first = best[1], best[2]
         self._mark(net, first.cell, "n")
-        pending = order[1:]
+        for a, b in segs:
+            self.add_segment(net, a, b)
+        result.failed_owners = failed
+        result.segments = [(mm(a), mm(b)) for a, b in segs]
+        return result
+
+    def _grow(self, net: str, first: Terminal, pending: list[Terminal], existing: set[Cell],
+              turn_at_tip: bool) -> tuple[list[tuple[Cell, Cell]], list[str], float]:
+        """One greedy tree from ``first``: its segments, the pins it could not reach, its cost."""
+        tree: set[Cell] = {first.cell} | existing
+        pending = list(pending)
         segs: list[tuple[Cell, Cell]] = []
+        failed: list[str] = []
+        total = 0.0
         while pending:
             pending.sort(key=lambda t: min(abs(t.cell[0] - c[0]) + abs(t.cell[1] - c[1]) for c in tree))
             t = pending.pop(0)
             if t.cell in tree:
                 continue
-            path = None
+            found = None
             for pad in (8, 24, 80):
-                path = self.search(net, t.cell, None if turn_at_tip else t.out, tree, pad)
-                if path:
+                found = self.search(net, t.cell, None if turn_at_tip else t.out, tree, pad)
+                if found:
                     break
-            if not path:
-                result.failed_owners.append(t.owner)
+            if not found:
+                failed.append(t.owner)
                 continue
+            path, cost = found
+            total += cost
             corners = [path[0]]
             for k in range(1, len(path) - 1):
                 a, b, c = path[k - 1], path[k], path[k + 1]
                 if (b[0] - a[0], b[1] - a[1]) != (c[0] - b[0], c[1] - b[1]):
                     corners.append(b)
             corners.append(path[-1])
-            for a, b in zip(corners, corners[1:]):
-                self.add_segment(net, a, b)
-                segs.append((a, b))
+            segs.extend(zip(corners, corners[1:]))
             tree.update(path)
-        result.segments = [(mm(a), mm(b)) for a, b in segs]
-        return result
+        return segs, failed, total
 
 
 def normalise(segments: list[tuple[tuple[float, float], tuple[float, float]]],

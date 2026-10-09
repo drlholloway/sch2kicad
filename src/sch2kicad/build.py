@@ -15,7 +15,7 @@ from .geometry import (GRID, Layout, Orient, Placed, apply, fit_orientation, pin
                        snap, spiral)
 from .kicad_env import kicad_cli
 from .parts import Profile, Resolved, canonical_pin, load_profile, resolve_all
-from .router import NetRoute, Router, Terminal, cell_of, normalise
+from .router import Cell, NetRoute, Router, Terminal, cell_of, normalise
 from .schematic import (SchematicWriter, SymbolInstance, copy_bundled_symbols, field_positions,
                         text_box as _text_box, write_project)
 from .symlib import LibSymbol, SymbolResolver
@@ -444,6 +444,7 @@ class Builder:
                 orphans[net] = pending + follow
         self._pwr_flags(terms, router)
 
+        router.guide = self._guides(terms)
         # route everything else, shortest nets first
         routed: dict[str, NetRoute] = {}
         order = sorted((n for n in terms if n not in flagged and len(terms[n]) >= 2),
@@ -547,6 +548,41 @@ class Builder:
         return BuildResult(sch=sch, pro=pro, expected=expected, problems=self.problems, notes=self.notes,
                            labelled_nets=self.labelled, moved=sorted(set(moved)),
                            uncertain=[u.note for u in self.c.uncertain])
+
+    def _guides(self, terms: dict[str, list[Terminal]]) -> dict[str, set[Cell]]:
+        """The grid cells each net's drawn wires fall on, for the router to follow.
+
+        The drawing's wires come through the same linear map as its parts, but each
+        part is then snapped and centred on its own pins, so a wire can land a grid
+        step beside the pin it leads to. A line that comes within reach of one of its
+        net's pins is moved onto that pin's column or row, and a line that comes near
+        none of them is left out: following a guide that is out of true would put in
+        the very jog the guide is there to take out.
+        """
+        from .trace import drawn_wires
+        try:
+            drawn = drawn_wires(self.c)
+        except FileNotFoundError:       # no source beside the reading: route as before
+            return {}
+        out: dict[str, set[Cell]] = {}
+        for net, segs in drawn.items():
+            ts = terms.get(net, [])
+            if len(ts) < 2 or self._draw_as_flags(net):
+                continue        # a rail is a flag at each pin here, whatever bus the drawing ran
+            cells: set[Cell] = set()
+            for sg in segs:
+                a, b = self.layout.to_sheet(sg.a), self.layout.to_sheet(sg.b)
+                axis = 1 if abs(a[1] - b[1]) < abs(a[0] - b[0]) else 0   # the coordinate it holds
+                held = (a[axis] + b[axis]) / 2
+                near = [t.pos[axis] for t in ts if abs(t.pos[axis] - held) <= 1.5 * GRID]
+                if not near:
+                    continue        # lands between pins: following it can only add a jog
+                held = min(near, key=lambda v: abs(v - held))
+                k = int(round(held / GRID))
+                lo, hi = sorted((int(round(a[1 - axis] / GRID)), int(round(b[1 - axis] / GRID))))
+                cells.update((k, j) if axis == 0 else (j, k) for j in range(lo, hi + 1))
+            out[net] = cells
+        return out
 
     # ........................................................ global labels
     def _label_terminals(self, terms: dict[str, list[Terminal]], router: Router) -> list:

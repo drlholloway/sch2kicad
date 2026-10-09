@@ -22,7 +22,9 @@ So a vero conversion is two files:
    - **warnings**: a lead alone on its strip, two leads in one hole, and where the
      image disagrees with the reading about cuts and links;
    - **notes**: a chip's spare pins, alone on their strips. These are said once,
-     and the skeleton marks them NC.
+     and the skeleton marks them NC. A chip pin in a cut hole is a note too: some
+     layouts cut a pin's own hole to leave it open (the Memory Lapse's LM386
+     pins 1, 7, 8). The same cut under a resistor's lead is a problem.
 
    It also writes `board.overlay.png`: every part's leads joined by a coloured line
    and labelled, cuts read as blue crosses, links as green lines, wires as magenta
@@ -71,6 +73,9 @@ So a vero conversion is two files:
   rows past Z are `AA`...).
 - **`strips`**: `"rows"` when the copper runs along a lettered row (Dirtbox), or
   `"cols"`.
+- **`columns`**: `"letters"` when the columns are lettered too (A–R across the top).
+  A hole is then row letter then column letter: `"CE"` is row C, column E. In this
+  mode `"NC"` is a hole (row N, column C), so write `null` for no connection.
 - **`stated`**: the counts the layout prints. Always copy them; they catch a
   missed cut.
 - **`cuts`**: `"A3"` is a cut at a hole: the hole joins nothing. `"D2/D3"` is a cut
@@ -124,11 +129,25 @@ footswitch) go in `bom_accept`.
 - Cut squares cover a link's bar where they cross it. A link drawn over three cut
   squares is still one link from end to end.
 
+## Other drawing styles
+
+Not every Dirtbox layout is drawn the same way. The Memory Lapse (2024) differs
+from the 2021 and 2026 ones:
+- the columns are lettered;
+- a cut is a red dot on a small white square (grey under a chip);
+- links are blue, and two links meeting at a hole are marked with a black dot;
+- electrolytics are pink, with the negative side shaded grey.
+
+Off-board wiring notes under the layout can be wrong. Read the post's comments
+for corrections ("Surge 2 connects to Feedback 2, not Feedback 3"), and ask the
+user which to follow.
+
 ## What the image check can and cannot see
 
 It finds the hole grid from the copper, then looks for:
-- **cuts**: a pure red square round a hole that still shows;
-- **links**: a black bar between holes, across the strips.
+- **cuts**: a pure red square round a hole that still shows, or a red dot in the
+  hole on a pale square, even with a lead drawn across it;
+- **links**: a black or blue bar between holes, across the strips.
 
 A cut under a chip's body shows a darker red, and is seen. A cut under a
 translucent resistor or a part's lettering can't be seen, and neither can a link

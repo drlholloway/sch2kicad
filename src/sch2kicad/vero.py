@@ -22,6 +22,7 @@ import json
 import re
 from collections import Counter
 from dataclasses import dataclass, field
+from typing import ClassVar
 from pathlib import Path
 
 from .parts import TWO_TERMINAL, canonical_pin
@@ -32,6 +33,7 @@ SCHEMA = "sch2kicad/vero@1"
 _CHIPS = {"ic", "lm386", "opamp_single", "opamp_dual", "opamp_quad"}
 
 _HOLE = re.compile(r"^([A-Z]{1,2})(\d{1,3})$")
+_HOLE_LETTERS = re.compile(r"^([A-Z])([A-Z])$")
 
 # Off-board wires whose names say what they are. Anything else (a pot lug, "Gain 3")
 # keeps its own name.
@@ -80,10 +82,13 @@ def standard_name(wire: str) -> str:
 class Hole:
     row: int
     col: int            # 1-based, as printed
+    # Some layouts letter the columns too: a hole is then written row then column,
+    # "CE" for row C, column E. Set from the board being read.
+    letters: ClassVar[bool] = False
 
     @property
     def name(self) -> str:
-        return f"{row_name(self.row)}{self.col}"
+        return f"{row_name(self.row)}{row_name(self.col - 1) if Hole.letters else self.col}"
 
 
 @dataclass
@@ -113,6 +118,7 @@ class Board:
     notes: list[str]
     path: Path | None = None
     problems: list[str] = field(default_factory=list)
+    col_letters: bool = False               # columns lettered A, B... instead of numbered
 
     def image(self) -> Path | None:
         img = self.source.get("image")
@@ -124,12 +130,19 @@ class Board:
 
 # ------------------------------------------------------------------ loading
 
+def _is_hole(text, b: Board) -> bool:
+    return bool((_HOLE_LETTERS if b.col_letters else _HOLE).match(str(text).strip().upper()))
+
+
 def _hole(text, where: str, b: Board) -> Hole | None:
-    m = _HOLE.match(str(text).strip().upper())
+    t = str(text).strip().upper()
+    m = (_HOLE_LETTERS if b.col_letters else _HOLE).match(t)
     if not m:
-        b.problems.append(f"{where}: {text!r} is not a hole (row letter + column, like D6)")
+        form = "row letter + column letter, like CE" if b.col_letters else "row letter + column, like D6"
+        b.problems.append(f"{where}: {text!r} is not a hole ({form})")
         return None
-    h = Hole(row_index(m.group(1)), int(m.group(2)))
+    col = row_index(m.group(2)) + 1 if b.col_letters else int(m.group(2))
+    h = Hole(row_index(m.group(1)), col)
     if not (0 <= h.row < b.rows and 1 <= h.col <= b.cols):
         b.problems.append(f"{where}: {h.name} is off the {b.cols}x{b.rows} board")
         return None
@@ -156,7 +169,11 @@ def from_dict(data: dict) -> Board:
     b = Board(name=str(data.get("name", "board")), rows=int(bd["rows"]), cols=int(bd["cols"]),
               strips=strips, cuts=[], links=[], wires=[], parts=[],
               stated=dict(data.get("stated") or {}), grid=dict(data.get("grid") or {}),
-              source=dict(data.get("source") or {}), notes=[str(n) for n in data.get("notes") or []])
+              source=dict(data.get("source") or {}), notes=[str(n) for n in data.get("notes") or []],
+              col_letters=str(bd.get("columns", "numbers")) == "letters")
+    if b.col_letters and b.cols > 26:
+        raise ValueError("lettered columns go to Z")
+    Hole.letters = b.col_letters
     for c in data.get("cuts") or []:
         if "/" in str(c):
             x, y = str(c).split("/", 1)
@@ -191,12 +208,13 @@ def from_dict(data: dict) -> Board:
             pin = str(pin)
             if isinstance(v, dict):
                 bp.nets[pin] = str(v["net"])
-            elif v is None or str(v).upper() in ("NC", "N/C"):
-                bp.nc.append(pin)
-            elif _HOLE.match(str(v).strip().upper()):
+            elif v is not None and _is_hole(v, b):
+                # before NC: on a board with lettered columns, NC is row N, column C
                 h = _hole(v, f"{where}.{pin}", b)
                 if h:
                     bp.holes[pin] = h
+            elif v is None or str(v).upper() in ("NC", "N/C"):
+                bp.nc.append(pin)
             elif str(v) in wire_names:
                 bp.wires[pin] = str(v)
             else:
@@ -228,6 +246,7 @@ class Nets:
 
 
 def derive(b: Board) -> Nets:
+    Hole.letters = b.col_letters
     parent: dict = {}
 
     def find(x):
@@ -264,10 +283,15 @@ def derive(b: Board) -> Nets:
             probs.append(f"wire {name} is soldered at {h.name}, which is cut")
         union(("wire", name), h)
     used: dict[Hole, list[str]] = {}
+    isolated: dict[str, list[str]] = {}
     for p in b.parts:
         for pin, h in p.holes.items():
             if h in cut_holes:
-                probs.append(f"{p.ref}.{pin} is in {h.name}, which is cut: that lead joins nothing")
+                if p.type in _CHIPS:
+                    # some layouts cut a chip's pin hole to leave the pin open
+                    isolated.setdefault(p.ref, []).append(pin)
+                else:
+                    probs.append(f"{p.ref}.{pin} is in {h.name}, which is cut: that lead joins nothing")
             used.setdefault(h, []).append(f"{p.ref}.{pin}")
             union(("pin", p.ref, pin), h)
         for pin, w in p.wires.items():
@@ -326,14 +350,21 @@ def derive(b: Board) -> Nets:
             lone.add(name)
             ref, pin = pins[0].split(".", 1)
             if types.get(ref) in _CHIPS:
-                unused.setdefault(ref, []).append(pin)
+                if pin not in isolated.get(ref, []):
+                    unused.setdefault(ref, []).append(pin)
             else:
                 warns.append(f"{pins[0]} is alone on its strip ({', '.join(h.name for h in hs)}): "
                              f"a lead that connects to nothing — misread hole, or a missing link?")
+    for ref, pins in isolated.items():
+        nums = sorted(pins, key=lambda x: (len(x), x))
+        notes.append(f"{ref} pin{'s' if len(nums) > 1 else ''} {', '.join(nums)} "
+                     f"{'sit in cut holes' if len(nums) > 1 else 'sits in a cut hole'}: "
+                     f"left open, as the layout means")
     # a chip's spare pins are normal; say them once, so a missing link still stands out
     for ref, pins in unused.items():
         nums = sorted(pins, key=lambda x: (len(x), x))
-        notes.append(f"{ref} pins {', '.join(nums)} are alone on their strips: unused "
+        notes.append(f"{ref} pin{'s' if len(nums) > 1 else ''} {', '.join(nums)} "
+                     f"{'are' if len(nums) > 1 else 'is'} alone on {'their strips' if len(nums) > 1 else 'its strip'}: unused "
                      f"(check the datasheet lets them float, and the schematic marks them NC)")
     nets = Nets(names=names, holes=holes, wires=wires, pin_net=pin_net, problems=probs, warnings=warns,
                 notes=notes, lone=lone)
@@ -417,15 +448,33 @@ def _red(px) -> bool:
     """A cut's red, also seen through a translucent part drawn over it. A translucent
     red body over bare copper is orange-red, not this."""
     r, g, b = int(px[0]), int(px[1]), int(px[2])
-    return r > 150 and g < 60 and b < 60 and r - g > 110
+    # pure, or seen through a grey chip body: (190, 66, 66), green and blue equal.
+    # A translucent red body over copper keeps some of the copper's orange, its
+    # green above its blue: (230, 75, 60), (255, 107, 71).
+    if r <= 150 or r - g <= 110 or r - b <= 110:
+        return False
+    return (g < 60 and b < 60) or abs(g - b) < 6
 
 
 def _dark(px) -> bool:
     return int(px[0]) + int(px[1]) + int(px[2]) < 120
 
 
+def _lead(px) -> bool:
+    """A component lead's grey, drawn across a hole."""
+    r, g, b = int(px[0]), int(px[1]), int(px[2])
+    return abs(r - g) < 12 and abs(g - b) < 12 and 120 < r < 215
+
+
+def _bar(px) -> bool:
+    """A link's colour: black, or the deep blue some layouts draw links in."""
+    r, g, b = int(px[0]), int(px[1]), int(px[2])
+    return r + g + b < 120 or (b > 150 and r < 90 and g < 90)
+
+
 def look(b: Board) -> Seen:
     """Read the cuts and links off the layout image, to check the reading by."""
+    Hole.letters = b.col_letters
     from PIL import Image
     import numpy as np
     src = b.image()
@@ -461,9 +510,20 @@ def look(b: Board) -> Seen:
             h = Hole(r, c)
             cx, cy = g.at(h)
             # a link drawn across the cut darkens part of the ring: leave that out
-            inner = [q for q in ring(cx, cy, 0.28 * p) if not _dark(q)]
+            inner = [q for q in ring(cx, cy, 0.28 * p) if not _bar(q)]
             centre = px(cx, cy)
-            if len(inner) < 8 or centre is None or _red(centre):
+            if len(inner) < 8 or centre is None:
+                continue
+            # the other style: a red dot or small red square in the hole, on a pale
+            # square, sometimes under a lead or a chip's translucent body. A red body
+            # over the hole is red all round it.
+            near = [q for q in ring(cx, cy, 0.1 * p, n=12) + ring(cx, cy, 0.2 * p) if not _lead(q)]
+            outside = ring(cx, cy, 0.36 * p)
+            if near and sum(_red(q) for q in near) / len(near) >= 0.5 and \
+                    sum(_red(q) for q in outside) / len(outside) <= 0.3:
+                seen.cuts.add(h)
+                continue
+            if _red(centre):
                 continue
             sides = [px(cx + s * 0.5 * p * along[0], cy + s * 0.5 * p * along[1]) for s in (-1, 1)]
             body = all(q is not None and _red(q) for q in sides)
@@ -485,7 +545,7 @@ def look(b: Board) -> Seen:
             if q is None:
                 return False
             total += 1
-            dark += _dark(q)
+            dark += _bar(q)
             red += _red(q)
         return total > 0 and (dark + red) >= 0.85 * total and dark >= 0.25 * total
 
@@ -509,6 +569,7 @@ def look(b: Board) -> Seen:
 
 def compare_seen(b: Board, seen: Seen) -> list[str]:
     """Warnings where the image and the reading differ about cuts and links."""
+    Hole.letters = b.col_letters
     if seen.grid is None:
         return list(seen.warnings)
     out = list(seen.warnings)

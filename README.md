@@ -314,6 +314,29 @@ Its schematic is PedalPCB's Underminer, and the layout links to it.
 - A chip's spare pins (eight, on the CD4046) now come back as one note and as NC
   in the skeleton, not eight warnings. A resistor lead alone on a strip still warns.
 
+The third is Seppuku Fx and Jordan Fontaine's **Memory Lapse**: an LM386 into a
+PT2399, with a 78L05 for the delay chip, on an 18x18 board. It is drawn in an
+older Dirtbox style:
+- the columns are lettered;
+- cuts are red dots on small squares;
+- links are blue.
+
+It built READY first time, with 109 of 109 board pins agreeing, and it taught
+the reader three things:
+- **Lettered columns.** A hole is then `CE` (row C, column E). On those boards
+  `NC` is a hole too, row N column C. Read as "no connect", it had dropped R3's
+  leg and left the Stability pot floating, so a hole now wins over the keyword.
+- **Cut chip pins.** Some layouts cut a chip pin's own hole to leave it open. Here
+  that's the LM386's gain and bypass pins and the PT2399's pin 5. That is a note
+  for a chip, but still a problem for a resistor lead.
+- **The red-dot style.** The image check now sees this style of cut, including
+  one under a lead and the ones under the PT2399's grey body, and it reads blue
+  links.
+
+The off-board notes under the layout were out of date: a September 2025 comment
+moves Surge 2 from Feedback 3 to Feedback 2, and the schematic follows the
+correction.
+
 ## Development
 
 ```sh

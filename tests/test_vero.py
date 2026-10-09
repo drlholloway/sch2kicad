@@ -220,9 +220,9 @@ def test_the_image_finds_the_grid_cuts_and_links():
     assert g and abs(g.x0 - 241) < 2 and abs(g.y0 - 240) < 2 and abs(g.dx - 30) < 0.5
     # M4 is under D1's translucent body, and is the 19th cut the layout counts
     assert {h.name for h in seen.cuts} >= {"M4", "B8", "C8", "D8", "J8", "E14", "O15"}
-    # the only cuts not seen are the two drawn under a part's text or body
+    # A3 shows as a small red square under the 47nF's lettering; the only cut not
+    # seen is K3, under the 4.7K's translucent body
     assert compare_seen(b, seen) == [
-        "cut at A3 is in the reading, but no cut mark shows there (hidden under a part, or a misread hole)",
         "cut at K3 is in the reading, but no cut mark shows there (hidden under a part, or a misread hole)"]
 
 
@@ -304,3 +304,69 @@ def test_cuts_under_a_chip_are_seen_and_a_capacitor_is_not_a_cut():
         "cut at B6 is in the reading, but no cut mark shows there (hidden under a part, or a misread hole)",
         "cut at H6 is in the reading, but no cut mark shows there (hidden under a part, or a misread hole)",
         "link F8-K8 is in the reading, but no black bar shows at one end (under a part, or a misread end)"]
+
+
+# ------------------------------------------------------------------ lettered columns, red-dot cuts
+
+LAPSE = CIRCUITS / "memory-lapse.board.json"
+
+
+def _lettered(**kw):
+    d = {"schema": "sch2kicad/vero@1", "name": "t",
+         "board": {"rows": 14, "cols": 6, "strips": "rows", "columns": "letters"}}
+    d.update(kw)
+    return board_from_dict(d)
+
+
+def test_lettered_columns_read_row_then_column():
+    b = _lettered(cuts=["AC"], parts=[
+        {"ref": "R1", "type": "resistor", "pins": {"1": "AB", "2": "BB"}},
+        {"ref": "R2", "type": "resistor", "pins": {"1": "AD", "2": "BD"}}])
+    nets = derive(b)
+    assert _net_of(nets, "R1.1") != _net_of(nets, "R2.1")      # cut at row A, column C
+    assert _net_of(nets, "R1.2") == _net_of(nets, "R2.2")
+    assert any("AB" in nets.holes[n] for n in nets.holes)
+    assert any("off the 6x14 board" in p for p in _lettered(parts=[
+        {"ref": "R1", "type": "resistor", "pins": {"1": "AG", "2": "BA"}}]).problems)
+
+
+def test_nc_is_a_hole_when_the_columns_are_lettered():
+    # row N, column C — not "no connect"
+    b = _lettered(parts=[{"ref": "R1", "type": "resistor", "pins": {"1": "NC", "2": "AA"}},
+                         {"ref": "R2", "type": "resistor", "pins": {"1": "NA", "2": "BA"}}])
+    nets = derive(b)
+    assert _net_of(nets, "R1.1") == _net_of(nets, "R2.1")
+
+
+def test_a_chip_pin_in_a_cut_hole_is_left_open_but_a_resistor_lead_is_a_problem():
+    b = _lettered(cuts=["AB", "BB"], parts=[
+        {"ref": "IC1", "type": "lm386", "pins": {"1": "AB", "2": "BC", "3": "CB", "4": "DB",
+                                                 "5": "DE", "6": "CE", "7": "BE", "8": "AE"}},
+        {"ref": "R1", "type": "resistor", "pins": {"1": "BB", "2": "CA"}}])
+    nets = derive(b)
+    assert "IC1 pin 1 sits in a cut hole: left open, as the layout means" in nets.notes
+    assert any("R1.1 is in BB, which is cut" in p for p in nets.problems)
+    assert not any("IC1" in p for p in nets.problems)
+
+
+def test_the_memory_lapse_schematic_matches_its_board():
+    c = load(CIRCUITS / "memory-lapse.circuit.json")
+    chk = check_circuit(c, c.board_path())
+    assert chk.ok, chk.problems + chk.diffs
+    assert chk.pins == 109
+
+
+needs_lapse_image = pytest.mark.skipif(not (CIRCUITS.parent / "Seppuku Fx Memory Lapse.png").exists(),
+                                       reason="the layout image is third-party and not in the repo")
+
+
+@needs_lapse_image
+def test_red_dot_cuts_and_blue_links_are_seen():
+    b = load_board(LAPSE)
+    seen = look(b)
+    names = {h.name for h in seen.cuts}
+    # plain red dots, a dot under a lead (KN), dots under the PT2399's grey body (column G)
+    assert {"AK", "KN", "MO", "EF"} | {f"{r}G" for r in "JKLMOPQ"} <= names
+    read = {h for h, o in b.cuts if o is None}
+    assert not (seen.cuts - read), sorted(h.name for h in seen.cuts - read)     # nothing invented
+    assert {(x.name, y.name) for x, y in seen.links} >= {("ED", "FD"), ("CJ", "DJ"), ("EG", "HG"), ("LD", "MD")}

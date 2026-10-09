@@ -151,6 +151,7 @@ class Builder:
         self.net_terms: dict[str, list[Terminal]] = {}
         self.open_on_power: set[str] = set()      # nets with an open driver pin and a PWR_FLAG
         self.flag_boxes: list[tuple] = []         # every flag symbol drawn, with its value text
+        self.flag_rows: dict[str, float] = {}     # terminal owner → the line its flag stands on
 
     # ............................................................ helpers
     def pin_net(self, pl: Placed, number: str) -> str | None:
@@ -360,6 +361,7 @@ class Builder:
                 others = [p2 for p2 in lay.placed if p2 is not pl]
                 if len(pl.pins()) > 1 and lay.conflicts(pl, others, margin=2.54):
                     lay.find_spot(pl, others, radius=30)
+        self._line_up()
         self._room_for_supply_rails()
         self._place_unplaced()
         self.w.paper = lay.sheet.paper
@@ -432,6 +434,7 @@ class Builder:
 
         # power and ground nets drawn with flags
         self.net_terms = terms
+        self.flag_rows = self._flag_rows(terms)
         flagged = [n for n in terms if self._draw_as_flags(n)]
         by_flag = set(flagged)
         orphans: dict[str, list[Terminal]] = {}
@@ -549,6 +552,102 @@ class Builder:
                            labelled_nets=self.labelled, moved=sorted(set(moved)),
                            uncertain=[u.note for u in self.c.uncertain])
 
+    def _line_up(self, reach: int = 2, passes: int = 4) -> None:
+        """Put back in line the pins the drawing lines up and the symbols pushed apart.
+
+        Each part is centred on its own drawn pins and snapped to the grid on its own,
+        so two pins of one net the drawing puts in a column — a cap's end under a
+        diode's, C7's beside D1's — land a grid apart wherever KiCad's symbols differ
+        in length from the drawn ones, and the wire between them takes a jog. Pins of
+        one signal net the drawing puts within half a grid of each other on one axis
+        are a line; a part off its line moves along that axis, at most ``reach`` grid
+        steps, to the coordinate that costs the least moving. Only a two-pin part moves:
+        a resistor steps to a transistor's lead, never the other way, since a chip or a
+        transistor shifted a grid drags every net it has with it.
+        A line is put straight whole or not at all, every part on it clear of every
+        other and every line already straight left so. A rail drawn as flags has no
+        line; one wired as a bus (Musket's +9V) lines up like any other net.
+        """
+        lay = self.layout
+        tol = 0.5 * GRID / lay.scale            # half a grid on the sheet, in source pixels
+        pins = []
+        for pl in lay.placed:
+            if pl.res.part.type == "port":
+                continue
+            for sem, pin in pl.res.part.pins.items():
+                if pin.at is None or sem not in pl.pinmap or not pin.net or pin.net == "NC" \
+                        or self._draw_as_flags(pin.net):
+                    continue
+                pins.append((pin.net, pin.at, pl, pl.pinmap[sem]))
+        lines: list[tuple[int, list[tuple[Placed, str]]]] = []
+        for axis in (0, 1):
+            by_net: dict[str, list] = {}
+            for net, at, pl, number in pins:
+                by_net.setdefault(net, []).append((at[axis], pl, number))
+            for items in by_net.values():
+                items.sort(key=lambda i: i[0])
+                run = [items[0]]
+                for it in items[1:] + [None]:
+                    if it is not None and it[0] - run[-1][0] <= tol:
+                        run.append(it)
+                        continue
+                    if len({id(r[1]) for r in run}) >= 2:
+                        lines.append((axis, [(r[1], r[2]) for r in run]))
+                    if it is not None:
+                        run = [it]
+        def straight(i: int) -> bool:
+            axis, members = lines[i]
+            return max(pl.pin_pos(n)[axis] for pl, n in members) - \
+                min(pl.pin_pos(n)[axis] for pl, n in members) < 1e-3
+
+        for _ in range(passes):
+            changed = False
+            for i, (axis, members) in enumerate(lines):
+                if straight(i):
+                    continue
+                coords = {pl.pin_pos(n)[axis] for pl, n in members}
+
+                def cost(target):
+                    return sum((1 if len(pl.pins()) <= 2 else 1000) * abs(pl.pin_pos(n)[axis] - target)
+                               for pl, n in members)
+                for target in sorted(coords, key=cost):
+                    # all of the line or none of it: half a line put straight only moves
+                    # the jog to the pins left off it
+                    held = [j for j in range(len(lines)) if j != i and lines[j][0] == axis and straight(j)]
+                    moved: list[tuple[Placed, tuple[float, float]]] = []
+                    ok = True
+                    for pl, n in members:
+                        delta = round(target - pl.pin_pos(n)[axis], 4)
+                        if abs(delta) < 1e-3:
+                            continue
+                        if abs(delta) > reach * GRID + 1e-3 or len(pl.pins()) > 2 \
+                                or any(m is pl for m, _ in moved):
+                            ok = False
+                            break
+                        old = pl.origin
+                        pl.origin = (snap(old[0] + delta), old[1]) if axis == 0 else (old[0], snap(old[1] + delta))
+                        moved.append((pl, old))
+                        if lay.conflicts(pl, [o for o in lay.placed if o is not pl]):
+                            ok = False
+                            break
+                    if ok and straight(i) and all(straight(j) for j in held):
+                        changed = True
+                        break
+                    for pl, old in reversed(moved):
+                        pl.origin = old
+            if not changed:
+                break
+
+    def _drawn(self):
+        """Each signal net's drawn wires (source pixels), or None with no drawing to hand."""
+        if not hasattr(self, "_drawn_cache"):
+            from .trace import drawn_wires
+            try:
+                self._drawn_cache = drawn_wires(self.c)
+            except FileNotFoundError:
+                self._drawn_cache = None
+        return self._drawn_cache
+
     def _guides(self, terms: dict[str, list[Terminal]]) -> dict[str, set[Cell]]:
         """The grid cells each net's drawn wires fall on, for the router to follow.
 
@@ -559,10 +658,8 @@ class Builder:
         none of them is left out: following a guide that is out of true would put in
         the very jog the guide is there to take out.
         """
-        from .trace import drawn_wires
-        try:
-            drawn = drawn_wires(self.c)
-        except FileNotFoundError:       # no source beside the reading: route as before
+        drawn = self._drawn()
+        if drawn is None:               # no source beside the reading: route as before
             return {}
         out: dict[str, set[Cell]] = {}
         for net, segs in drawn.items():
@@ -677,6 +774,12 @@ class Builder:
 
         near, far = (2.54, 3.81, 5.08), (2.54, 3.81, 5.08, 7.62)
         cands = []
+        row = self.flag_rows.get(t.owner)
+        if row is not None and t.out == up_dir:   # down to the line the drawing stands its flags on
+            axis = 0 if t.out[0] else 1
+            reach = round(abs(row - t.pos[axis]), 4)
+            if reach >= GRID:
+                cands.append(([t.pos, pt(t.pos, t.out, reach)], upright))
         if t.out == up_dir:                        # pin already points the flag's way
             cands += [([t.pos, pt(t.pos, t.out, s)], upright) for s in (2.54, 3.81, 5.08, 1.27, 7.62)]
         elif t.out[1] == 0:                        # sideways pin: out, then turn to stand the flag up
@@ -724,6 +827,54 @@ class Builder:
         router.pin_net[cell_of(path[-1])] = net
         self.flag_boxes.append(box)
         return True
+
+    def _flag_rows(self, terms: dict[str, list[Terminal]]) -> dict[str, float]:
+        """The line each rail pin's flag stands on, where the drawing lines its flags up.
+
+        Chuck D. Bones runs every ground in a stage down to one baseline, on leads of
+        whatever length that takes; hung a fixed stub below each pin, ours came out a
+        grid or three apart wherever the parts above them differ in length. Pins whose
+        flags the drawing stands level (within a grid, mapped onto the sheet) form a
+        row, and the row's line is the furthest pin's ordinary stub — so no flag comes
+        closer to its pin than it would have, and every one in the row ends level.
+        Only a pin already pointing the way its flag stands takes part: anything else
+        needs a dog-leg, and a dog-leg to reach a line is worse than missing it.
+        Returns terminal owner -> the coordinate (across the flag's axis) to end on.
+        """
+        from .trace import rail_ends
+        try:
+            ends = rail_ends(self.c)
+        except FileNotFoundError:       # no source beside the reading: flags as before
+            return {}
+        key_of = {}
+        for pl in self.layout.placed:
+            for sem, number in pl.pinmap.items():
+                key_of[f"{pl.res.ref}.{number}"] = f"{pl.res.part.key}.{sem}"
+        out: dict[str, float] = {}
+        for net, ts in terms.items():
+            if not self._draw_as_flags(net):
+                continue
+            sym, _ = self._flag_symbol(net)
+            pin = sym.pins_for(1)[0]
+            up = tuple(int(round(v)) for v in apply(Orient(0, None).m, -pin.outward()[0], -pin.outward()[1]))
+            axis = 0 if up[0] else 1
+            drawn = sorted(((self.layout.to_sheet(ends[key_of[t.owner]])[axis], t) for t in ts
+                            if t.out == up and key_of.get(t.owner) in ends), key=lambda d: d[0])
+            rows: list[list[Terminal]] = []
+            last = None
+            for v, t in drawn:
+                if last is None or v - last > GRID:
+                    rows.append([])
+                rows[-1].append(t)
+                last = v
+            for row in rows:
+                if len(row) < 2:
+                    continue
+                tips = [t.pos[axis] + up[axis] * 2.54 for t in row]
+                line = max(tips) if up[axis] > 0 else min(tips)
+                for t in row:
+                    out[t.owner] = line
+        return out
 
     def _flag_leaders(self, net: str, ts: list[Terminal]) -> tuple[list[Terminal], list[Terminal]]:
         """Which of a rail's pins stand a flag of their own, and which share a neighbour's.

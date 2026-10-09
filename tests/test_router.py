@@ -91,3 +91,33 @@ def test_the_drawing_gives_each_net_its_own_wires():
     collector = next(pin.at for name, pin in q1.pins.items() if pin.net == "Q1_C")
     runs = [s for s in drawn["Q1_C"] if abs(s.a[0] - s.b[0]) < 3 and abs(s.a[0] - collector[0]) < 6]
     assert runs and max(abs(s.a[1] - s.b[1]) for s in runs) > 100
+
+
+@_needs_drawing("altered-states")
+def test_grounds_the_drawing_lines_up_stand_on_one_line(tmp_path):
+    """Chuck D. Bones runs every ground along the bottom of Altered States to one
+    baseline, R1's on the left to C14's on the right, on leads of whatever length
+    that takes. A fixed stub under each pin put C13's, C14's and VR3's a grid or
+    three off the rest."""
+    b = Builder(load(SAMPLES / "circuits" / "altered-states.circuit.json"), load_profile("tht"), "rows")
+    b.run(tmp_path)
+    grounds = sorted(s.at[1] for s in b.w.symbols if s.lib.lib_id.endswith(":GND"))
+    level = max(set(grounds), key=grounds.count)
+    assert grounds.count(level) == 11
+
+
+def test_pins_the_drawing_lines_up_stay_lined_up(tmp_path):
+    """Chuck draws C8's end under D1's and D2's (Q2's collector), and C10's under D3's
+    and D4's (Q3's drain). KiCad's capacitor is shorter than its diodes, so each part
+    centred on its own pins left the caps a grid to one side and their wires jogged."""
+    b = Builder(load(SAMPLES / "circuits" / "altered-states.circuit.json"), load_profile("tht"), "line")
+    b.run(tmp_path)
+
+    def x(ref, net):
+        for pl in b.layout.placed:
+            if pl.res.ref == ref:
+                for sem, pin in pl.res.part.pins.items():
+                    if pin.net == net:
+                        return pl.pin_pos(pl.pinmap[sem])[0]
+    assert x("C8", "Q2_C") == x("D1", "Q2_C") == x("D2", "Q2_C")
+    assert x("C10", "Q3_D") == x("D3", "Q3_D") == x("D4", "Q3_D")

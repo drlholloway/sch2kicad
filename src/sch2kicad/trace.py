@@ -1614,6 +1614,35 @@ def drawn_wires(circuit, doc: Path | None = None) -> dict[str, list[Seg]]:
     return dict(out)
 
 
+def rail_ends(circuit, doc: Path | None = None) -> dict[str, Point]:
+    """Where the drawing stands each rail pin's flag: the far end of its lead.
+
+    A drawing hangs a ground symbol off a pin on a lead of whatever length puts it
+    where the drawer wants it — Chuck D. Bones runs every ground in a stage down to
+    one baseline. The traced island a rail pin sits on is that lead (and the symbol's
+    own bar), so its point furthest out from the part, the way the pin leaves it, is
+    where the flag is. Keyed like ``Crosscheck.pins``: ``"R1.2"``, in source pixels.
+    """
+    rep, cond = _traced(circuit, doc)
+    by_root: dict[int, list[Seg]] = defaultdict(list)
+    for i, s in enumerate(cond.segs):
+        by_root[cond.find(i)].append(s)
+    centres = {p.key: _centre([pin.at for pin in p.pins.values() if pin.at]) for p in circuit.parts}
+    out: dict[str, Point] = {}
+    for key, (net, root) in rep.pins.items():
+        if root is None or circuit.net_kind(net) not in ("power", "ground") or key.startswith("port:"):
+            continue
+        at = _pin_at(circuit, key)
+        away = _away(centres.get(key.rpartition(".")[0]), at) if at else None
+        if away is None:
+            continue
+        ends = [q for s in by_root[root] for q in (s.a, s.b)]
+        far = max(ends, key=lambda q: (q[0] - at[0]) * away[0] + (q[1] - at[1]) * away[1])
+        if (far[0] - at[0]) * away[0] + (far[1] - at[1]) * away[1] > 1.0:
+            out[key] = far
+    return out
+
+
 def _traced(circuit, doc: Path | None = None) -> tuple[Crosscheck, Conductors]:
     work = circuit.path.parent if circuit.path else Path(".")
     meta = {}

@@ -143,7 +143,7 @@ with no room of its own reaches for a flag the rail already has rather than
 settle for a net label. Two things the build will tell you it could not do. `note: joined with net labels
 instead of wires` names a net with no clean route — correct, but it reads
 worse; `note: drawn touching` names parts left with no daylight between them,
-which you can pull apart in KiCad in seconds. Wires follow the drawing's own: where the source is beside the reading, each net is routed along the wires the drawing runs for it (a collector's column stays one column), every pin is tried as the tree's start, and a step of a grid or two between bends pays extra — so a jog left on the sheet is one the placement forced, usually two pins the drawing lines up that KiCad's symbols put a grid apart. To show the user, make a high-resolution side-by-side and open it on
+which you can pull apart in KiCad in seconds. Wires follow the drawing's own: where the source is beside the reading, each net is routed along the wires the drawing runs for it (a collector's column stays one column), every pin is tried as the tree's start, and a step of a grid or two between bends pays extra. Before routing, parts step up to two grid along an axis to put back in line the pins of one net the drawing lines up (KiCad's symbols are rarely the drawn length), and flags the drawing stands on one baseline — Chuck's row of grounds — end level. A jog still left is usually a sheet whose symbols are far bigger than drawn (Abductor II). To show the user, make a high-resolution side-by-side and open it on
 their screen (images you read are not shown to them in the terminal):
 
 ```sh

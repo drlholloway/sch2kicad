@@ -179,6 +179,26 @@ A vactrol drawn as an LED and an LDR is one part on the board: an `ic` with
 `"lib_id": "Isolator:VTL5C"`, `"footprint": "OptoDevice:PerkinElmer_VTL5C"`,
 pins 1 (LED −), 2 (LED +), 3 and 4 (the LDR).
 
+Aleph Null's schematics (linked under the Dirtbox posts from PedalPCB forum
+threads, madbean threads and Flickr) are KiCad sheets with every ref; their refs
+win. The PedalPCB threads need the browser (the site blocks plain downloads), and
+the schematic is the post's Flickr image titled "... Schematic": fetch the
+photo page and take its `_o` original. Dirtbox's own refs for transistors,
+diodes and ICs often number them in a different order: renumber to the schematic.
+
+A dual-gang pot (the Troglodyte's DECAY) is one `ic` part on the house
+`2025_PedalDivision_Potentiometers:16mm_Alpha_style_Dual` (footprint
+`2025_PedalDivision_Potentiometers:POT_16mm_Dual`), pins 1-3 one gang and 4-6 the
+other. Keep it whole in board.json; in circuit.json draw it as units A (1-3) and
+B (4-6). An off-board module like the BTDR-3H reverb brick is a part whose pins
+are wire names; a wire named like a hole ("RB1") reads as a hole, so rename it
+("RB pin 1") and say so in `notes`. A layout that prints no ground wire still has
+a ground strip: add a `Ground` wire at the hole of the lug that lands there.
+
+`--skeleton` will not overwrite an existing file without `--force`, and it says
+so only in its output: after changing board.json, rewrite the skeleton with
+`--force`, or the generator draws from stale nets.
+
 An off-board wire's net keeps its board name in circuit.json (`BYPASS_LED+`, not
 a tidier `LED+`): the board check matches wires by name.
 

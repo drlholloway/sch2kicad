@@ -62,6 +62,9 @@ CD4007 = "sch2kicad:CD4007"
 # nor the LM565 PLL (Lastgasp Sick Pitch King Jr.), pinned as TI and Signetics number it
 LM565 = "sch2kicad:LM565"
 NE565 = "sch2kicad:LM565"
+# nor the Belton/Accutronics reverb brick (Aleph Null Troglodyte): a 1x10 socket, as it plugs in
+"BTDR-3H" = "sch2kicad:BTDR-3H"
+"BTDR-3" = "sch2kicad:BTDR-3H"
 # TI's SOT-23 (DBZ) TL431 is K-REF-A on pads 1-2-3; pins are given by name, so
 # the TO-92 reading builds unchanged
 TL431 = "Reference_Voltage:TL431DBZ"

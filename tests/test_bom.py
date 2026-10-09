@@ -51,6 +51,14 @@ def test_a_capital_n_p_or_u_on_a_capacitor_is_its_unit():
     assert bom.same_value("diode", "1N4148", "1N4001") is False         # diodes untouched
 
 
+def test_jrc_and_njm_are_one_maker():
+    """Dirtbox's Clever Hans layout says JRC4558, Aleph Null's schematic NJM4558:
+    JRC is the company, NJM the prefix it puts on its parts."""
+    assert bom.same_value("opamp_dual", "JRC4558", "NJM4558")
+    assert bom.same_value("opamp_dual", "JRC4558D", "NJM4558")
+    assert bom.same_value("opamp_dual", "JRC4558", "NJM4580") is False
+
+
 def test_a_taper_written_as_a_word():
     """Deadastronaut's parts list writes tapers as words ("1M LOG") and letters
     ("47kB") on one page, and the Abductor II's sheet writes "2M lin". The word

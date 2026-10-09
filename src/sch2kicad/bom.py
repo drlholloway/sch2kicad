@@ -296,6 +296,10 @@ def same_value(ptype: str, drawn: str, listed: str, listed_type: str = "") -> bo
         a, b = _norm(drawn), _norm(listed)
         if a and b and (a in b or b in a):             # 4558 / RC4558, TL062P / TL062
             return True
+        # JRC is the maker, NJM its part prefix: a layout's JRC4558 is the NJM4558
+        a, b = (re.sub(r"^(JRC|NJM)(?=\d)", "", v) for v in (a, b))
+        if a and b and (a in b or b in a):
+            return True
         # a 4000-series chip under any maker's prefix and grade: DOD list the
         # CD4007 as 4007A
         ma, mb = _CMOS4000.match(a), _CMOS4000.match(b)

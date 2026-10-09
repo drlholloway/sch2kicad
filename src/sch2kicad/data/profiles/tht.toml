@@ -67,6 +67,9 @@ CD4007 = "sch2kicad:CD4007"
 # nor the LM565 PLL (Lastgasp Sick Pitch King Jr.), pinned as TI and Signetics number it
 LM565 = "sch2kicad:LM565"
 NE565 = "sch2kicad:LM565"
+# nor the Belton/Accutronics reverb brick (Aleph Null Troglodyte): a 1x10 socket, as it plugs in
+"BTDR-3H" = "sch2kicad:BTDR-3H"
+"BTDR-3" = "sch2kicad:BTDR-3H"
 # The TL431 shunt reference: give its pins by name (REF, A, K), since TI and
 # onsemi number the same TO-92 leads opposite ways. Seen from the flat face,
 # leads down, both are REF-A-K from the left, which is KiCad's TL431LP on pads 1-2-3.

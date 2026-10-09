@@ -218,6 +218,25 @@ def test_the_lm565_pll_is_a_shipped_symbol(tmp_path, part):
     assert feet["tht"] == "2025_PedalDivision_OpAmps:DIP-14_W7.62mm"
 
 
+def test_the_btdr3h_reverb_brick_is_a_shipped_symbol(tmp_path):
+    """KiCad has no Belton/Accutronics BTDR-3H (the Troglodyte's reverb): ours is
+    numbered as the datasheet and Aleph Null number it, and plugs into a 1x10 socket."""
+    import json as _json
+    from sch2kicad.circuit import load
+    from sch2kicad.parts import load_profile, resolve_all
+    pins = {"1": "VC", "2": "GND", "3": "IN", "4": "GND", "5": "OUT2", "6": "OUT1",
+            "7": "P1A", "8": "P1B", "9": "P2A", "10": "P2B"}
+    f = tmp_path / "brick.circuit.json"
+    f.write_text(_json.dumps({"schema": "sch2kicad/circuit@1", "name": "Brick", "parts": [
+        {"ref": "U3", "type": "ic", "value": "BTDR-3H", "part": "BTDR-3H",
+         "pins": {k: [n, 100 + 10 * i, 100] for i, (k, n) in enumerate(pins.items())}}]}))
+    for profile in ("tht", "smd"):
+        r = resolve_all(load(f), load_profile(profile), SymbolResolver())[0]
+        assert r.lib_id == "sch2kicad:BTDR-3H"
+        assert r.problems == []
+        assert r.footprint == "Connector_PinSocket_2.54mm:PinSocket_1x10_P2.54mm_Vertical"
+
+
 def test_open_driver_on_a_power_net_is_allowed(tmp_path):
     """The house transistor symbols call collector and emitter open drivers; a grounded
     emitter then meets the net's PWR_FLAG, which KiCad's default matrix calls an error."""

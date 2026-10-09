@@ -390,6 +390,7 @@ class Builder:
                     lay.find_spot(pl, others, radius=30)
         self._line_up()
         self._straighten_chains()
+        self._pin_caps()
         self._power_row()
         self._room_for_supply_rails()
         self._place_unplaced()
@@ -849,6 +850,127 @@ class Builder:
         if x1 > ux1 or y1 > uy1:
             lay.sheet = choose_sheet(x1 - ux0 + 10, y1 - uy0 + 10)
 
+    def _point_at(self, reach: int = 4) -> None:
+        """Slide a part so a lead of it points straight at the pin it joins.
+
+        Lane's Memory Lapse puts R13 straight under the R12/VOLUME node and C16
+        straight under MIX's pin: a lead that points at its mate a grid or three to one
+        side reads as a dog-leg, the same lead in line with it as one wire. For each
+        two-pin part's lead, the nearest pin of its net that lies ahead of it within
+        ``reach`` grid to the side: the part slides across to put it on the lead's
+        line, if that lands clear and the part's other lead keeps any line it holds."""
+        lay = self.layout
+        pins_of: dict[str, list[tuple[Placed, str]]] = {}
+        for pl in lay.placed:
+            for q in pl.pins():
+                net = self.pin_net(pl, q.number)
+                if net and not self._draw_as_flags(net):
+                    pins_of.setdefault(net, []).append((pl, q.number))
+
+        def held(pl: Placed, n: str) -> bool:
+            """Does lead ``n`` already point straight at a pin of its net?"""
+            at, d = pl.pin_pos(n), pl.pin_dir(n)
+            side = 1 if d[0] else 0
+            return any(o is not pl and abs(o.pin_pos(m)[side] - at[side]) < 1e-3 and
+                       (o.pin_pos(m)[0] - at[0]) * d[0] + (o.pin_pos(m)[1] - at[1]) * d[1] > 0
+                       for o, m in pins_of.get(self.pin_net(pl, n), []))
+
+        for pl in lay.placed:
+            if len(pl.pins()) != 2 or pl.res.part.type == "port":
+                continue
+            for q in pl.pins():
+                n = q.number
+                net = self.pin_net(pl, n)
+                if not net or net not in pins_of or held(pl, n):
+                    continue
+                at, d = pl.pin_pos(n), pl.pin_dir(n)
+                side = 1 if d[0] else 0                     # the coordinate to match
+                ahead = []
+                for o, m in pins_of[net]:
+                    if o is pl:
+                        continue
+                    t = o.pin_pos(m)
+                    dist = (t[0] - at[0]) * d[0] + (t[1] - at[1]) * d[1]
+                    off = t[side] - at[side]
+                    if dist > 0 and 0 < abs(off) <= reach * GRID + 1e-3:
+                        ahead.append((dist + abs(off), off))
+                if not ahead:
+                    continue
+                off = min(ahead)[1]
+                other = next(r.number for r in pl.pins() if r.number != n)
+                kept = held(pl, other)
+                old = pl.origin
+                pl.origin = (snap(old[0] + off), old[1]) if side == 0 else (old[0], snap(old[1] + off))
+                if self._crowded(pl) or (kept and not held(pl, other)):
+                    pl.origin = old
+                else:
+                    break
+
+    def _pin_caps(self, out: int = 3, near: int = 3) -> None:
+        """Stand a part bridging two pins on one side of a chip right beside them.
+
+        Lane's Memory Lapse has PT2399's filter caps (C7 across pins 15-16, C9 across
+        11-12, C10 across 9-10) standing just off the chip between their two pins,
+        parallel to its side. Placed where they were drawn, C10 hung four grid below
+        its pins and both its leads went the long way round. Only for a schematic that
+        is ours; a drawing puts them where its designer wanted them."""
+        if not self.c.ours:
+            return
+        lay = self.layout
+        chips = [pl for pl in lay.placed if len(pl.pins()) >= 4 and pl.res.part.type != "port"]
+        where: dict[str, list[tuple[Placed, str]]] = {}
+        for chip in chips:
+            for q in chip.pins():
+                net = self.pin_net(chip, q.number)
+                if net and not self._draw_as_flags(net):
+                    where.setdefault(net, []).append((chip, q.number))
+        for pl in lay.placed:
+            if len(pl.pins()) != 2 or pl.res.part.type == "port":
+                continue
+            a, b = (q.number for q in pl.pins())
+            na, nb = self.pin_net(pl, a), self.pin_net(pl, b)
+            best = None
+            for chip, qa in where.get(na, []):
+                for chip2, qb in where.get(nb, []):
+                    if chip2 is not chip or qa == qb:
+                        continue
+                    da, db = chip.pin_dir(qa), chip.pin_dir(qb)
+                    pa, pb = chip.pin_pos(qa), chip.pin_pos(qb)
+                    along = 1 if da[0] else 0              # pins of a side differ along this axis
+                    if da != db or abs(pa[along] - pb[along]) > near * 2.54 + 1e-3:
+                        continue
+                    span = abs(pa[along] - pb[along])
+                    if best is None or span < best[0]:
+                        best = (span, chip, qa, qb, da, pa, pb, along)
+            if best is None:
+                continue
+            _, chip, qa, qb, d, pa, pb, along = best
+            old_o, old_origin = pl.orient, pl.origin
+            from .geometry import ORIENTS
+            placed = False
+            for o in [old_o] + [o for o in ORIENTS if o.mirror is None and o != old_o]:
+                pl.orient = o
+                ea, eb = pl.pin_pos(a), pl.pin_pos(b)
+                # parallel to the side, the end on qa's side toward qa
+                if abs(ea[1 - along] - eb[1 - along]) > 1e-3 or (eb[along] - ea[along]) * (pb[along] - pa[along]) <= 0:
+                    continue
+                across = pa[1 - along]                     # the pins' tips, across the side
+                mid = (pa[along] + pb[along]) / 2 - (ea[along] + eb[along]) / 2
+                for k in range(out, out + 3):
+                    line = across + d[1 - along] * k * GRID   # k grid out from the tips
+                    shift = [0.0, 0.0]
+                    shift[along] = mid
+                    shift[1 - along] = line - ea[1 - along]
+                    pl.origin = (snap(old_origin[0] + shift[0]), snap(old_origin[1] + shift[1]))
+                    if not self._crowded(pl):
+                        placed = True
+                        break
+                    pl.origin = old_origin
+                if placed:
+                    break
+            if not placed:
+                pl.orient, pl.origin = old_o, old_origin
+
     def _straighten_chains(self, reach: int = 10) -> None:
         """Lay a run of parts out straight along the pin it leads from.
 
@@ -940,6 +1062,7 @@ class Builder:
                             continue
                         if self._hang(hp, hn, at, hold, run):
                             done.add(id(hp))
+        self._point_at()
 
     def _make_room(self, pl: Placed, run, most: int = 12) -> bool:
         """Push what crowds a part landing on a run's line out of the way, by whole blocks.
@@ -1372,8 +1495,9 @@ class Builder:
         """
         from .trace import rail_ends
         ends = self._trace(rail_ends)
-        if ends is None:                # no drawing to read: flags as before
-            return {}
+        if ends is None:
+            # no drawing to read; a schematic that is ours lines its grounds up by block
+            return self._block_rows(terms) if self.c.ours else {}
         key_of = {}
         for pl in self.layout.placed:
             for sem, number in pl.pinmap.items():
@@ -1402,6 +1526,42 @@ class Builder:
                 line = max(tips) if up[axis] > 0 else min(tips)
                 for t in row:
                     out[t.owner] = line
+        return out
+
+    def _block_rows(self, terms: dict[str, list[Terminal]], near: int = 4) -> dict[str, float]:
+        """Level flags within a block, where there is no drawing to say where they stand.
+
+        Lane's Memory Lapse hangs C3's and C2's grounds, under PT2399's CC1 and CC0, on
+        one line; a fixed stub under each left them a grid or two apart, the caps being
+        a grid or two apart. Pins of one rail, in one block, pointing the way the flag
+        stands and within ``near`` grid of each other across it form a row, and the row
+        ends on the furthest pin's ordinary stub, as a drawing's baseline does."""
+        block_of = {ref: b.name for b in self.c.blocks for ref in b.parts}
+        out: dict[str, float] = {}
+        for net, ts in terms.items():
+            if not self._draw_as_flags(net):
+                continue
+            sym, _ = self._flag_symbol(net)
+            pin = sym.pins_for(1)[0]
+            up = tuple(int(round(v)) for v in apply(Orient(0, None).m, -pin.outward()[0], -pin.outward()[1]))
+            axis = 0 if up[0] else 1
+            groups: dict[str, list[Terminal]] = {}
+            for t in ts:
+                block = block_of.get(t.owner.rsplit(".", 1)[0])
+                if t.out == up and block and t.owner not in self.flag_rows:
+                    groups.setdefault(block, []).append(t)
+            for g in groups.values():
+                g.sort(key=lambda t: t.pos[axis] * up[axis])
+                row: list[Terminal] = []
+                for t in g + [None]:
+                    if t is not None and row and abs(t.pos[axis] - row[0].pos[axis]) <= near * GRID:
+                        row.append(t)
+                        continue
+                    if len(row) >= 2:
+                        far = max(r.pos[axis] * up[axis] for r in row) * up[axis]
+                        for r in row:
+                            out[r.owner] = far + up[axis] * 2.54
+                    row = [t] if t is not None else []
         return out
 
     def _flag_leaders(self, net: str, ts: list[Terminal]) -> tuple[list[Terminal], list[Terminal]]:

@@ -210,3 +210,52 @@ def test_a_designer_copy_is_laid_out_as_ours_and_never_traced(tmp_path):
     assert b._drawn() is None and b._flag_rows({}) == {}
     b.run(tmp_path)
     assert "VCC" in b.power_nodes                      # the supply row, as for the board
+
+
+def _memory_lapse(tmp_path, name):
+    b = Builder(load(SAMPLES / "circuits" / "memory-lapse.circuit.json"), load_profile("tht"), name)
+    b.run(tmp_path)
+    return b, {pl.res.ref: pl for pl in b.layout.placed}
+
+
+def _at(placed, ref, sem):
+    pl = placed[ref]
+    return pl.pin_pos(pl.pinmap[sem])
+
+
+def test_grounds_in_one_block_end_level_with_no_drawing(tmp_path):
+    """Lane hangs C3's and C2's grounds, under PT2399's CC1 and CC0, on one line.
+    Memory Lapse has no drawing to say so (it is drawn from a board), so grounds in
+    one block within a few grid of each other are levelled instead."""
+    b, placed = _memory_lapse(tmp_path, "grounds")
+    owners = [f"{r}.{placed[r].pinmap[s]}" for r, s in (("C3", "2"), ("C2", "2"))]
+    assert all(o in b.flag_rows for o in owners)
+    assert len({b.flag_rows[o] for o in owners}) == 1
+
+
+def test_a_cap_across_two_chip_pins_stands_beside_them(tmp_path):
+    """Lane stands PT2399's C10 just off pins 9 and 10, between them and parallel to
+    the chip's side; placed where it was drawn it hung four grid below."""
+    b, placed = _memory_lapse(tmp_path, "pincaps")
+    ic2 = placed["IC2"]
+    p9, p10 = ic2.pin_pos("9"), ic2.pin_pos("10")
+    ends = [placed["C10"].pin_pos(q.number) for q in placed["C10"].pins()]
+    assert abs(ends[0][0] - ends[1][0]) < 1e-3                       # stands up, like the side
+    assert 0 < ends[0][0] - p9[0] <= 4 * 1.27                        # just off the pins
+    mid = (p9[1] + p10[1]) / 2
+    assert abs((ends[0][1] + ends[1][1]) / 2 - mid) <= 1.27            # centred between them
+
+
+def test_a_lead_points_straight_at_what_it_joins(tmp_path):
+    """Lane puts R13 straight under the R12/VOLUME node and C16 straight under MIX."""
+    b, placed = _memory_lapse(tmp_path, "point")
+    r13 = placed["R13"]
+    top = min((r13.pin_pos(q.number) for q in r13.pins()), key=lambda p: p[1])
+    node = [placed[r].pin_pos(n) for r in ("R12", "VOLUME") for n in placed[r].pinmap.values()
+            if b.pin_net(placed[r], n) == b.pin_net(r13, next(q.number for q in r13.pins()
+                                                                if r13.pin_pos(q.number) == top))]
+    assert any(abs(p[0] - top[0]) < 1e-3 for p in node)
+    c16 = placed["C16"]
+    tops = min((c16.pin_pos(q.number) for q in c16.pins()), key=lambda p: p[1])
+    mix = [placed["MIX"].pin_pos(n) for n in placed["MIX"].pinmap.values()]
+    assert any(abs(p[0] - tops[0]) < 1e-3 for p in mix)

@@ -190,9 +190,15 @@ a drawn sheet follows its drawing instead:
   the two-pin parts (and a pot entered at an end, turned to lie along) leading out
   of it come onto the pin's line, and what hangs off a node of the run (a
   decoupling cap, a pad) comes to it from the side its rail flag stands. Blocks in
-  the way are pushed off the line whole. Each board sheet is built with and without
-  this and the tidier kept: a straightened run can leave a part's other end a grid
-  off what it joins.
+  the way are pushed off the line whole. A lead that points at its mate a few grid
+  to one side slides across to point straight at it (R13 under the R12/VOLUME
+  node, C16 under MIX). Each board sheet is built with and without these and the
+  tidier kept: a straightened run can leave a part's other end a grid off what it
+  joins.
+- **A part bridging two pins on one side of a chip** (PT2399's filter caps) stands
+  just off the chip between them, parallel to its side.
+- **Grounds in one block** within a few grid of each other end level, there being
+  no drawing to give a baseline.
 
 A vactrol drawn as an LED and an LDR is one part on the board: an `ic` with
 `"lib_id": "Isolator:VTL5C"`, `"footprint": "OptoDevice:PerkinElmer_VTL5C"`,

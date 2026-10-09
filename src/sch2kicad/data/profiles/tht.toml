@@ -70,11 +70,18 @@ NE565 = "sch2kicad:LM565"
 # nor the Belton/Accutronics reverb brick (Aleph Null Troglodyte): a 1x10 socket, as it plugs in
 "BTDR-3H" = "sch2kicad:BTDR-3H"
 "BTDR-3" = "sch2kicad:BTDR-3H"
-"4P4T" = "sch2kicad:SW_Rotary_4x4"
+# a 4P4T rotary (Shin-ei ME-7): the house symbol, a unit a pole; it carries no
+# footprint, since the switch is wired off the board (see [[footprints]])
+"4P4T" = "2025_PedalDivision_Switches:SW_Rotary_4x4"
 # The TL431 shunt reference: give its pins by name (REF, A, K), since TI and
 # onsemi number the same TO-92 leads opposite ways. Seen from the flat face,
 # leads down, both are REF-A-K from the left, which is KiCad's TL431LP on pads 1-2-3.
 TL431 = "Reference_Voltage:TL431LP"
+
+# the 4P4T rotary goes off the board: a row of wiring pads, one a lug
+[[footprints]]
+part = "^4P4T$"
+footprint = "Connector_PinHeader_2.54mm:PinHeader_1x20_P2.54mm_Vertical"
 
 [[footprints]]
 type = ["diode", "schottky"]

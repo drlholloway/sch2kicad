@@ -237,10 +237,10 @@ def test_the_btdr3h_reverb_brick_is_a_shipped_symbol(tmp_path):
         assert r.footprint == "Connector_PinSocket_2.54mm:PinSocket_1x10_P2.54mm_Vertical"
 
 
-def test_a_4p4t_rotary_is_a_shipped_symbol_a_unit_a_pole(tmp_path):
+def test_a_4p4t_rotary_is_the_house_symbol_a_unit_a_pole(tmp_path):
     """Shin-ei's ME-7 selects its effect on a 4P4T rotary (Dirtbox's lugs A-D and 1-16).
-    Neither KiCad nor the house library has one; ours is a unit a pole, its throws
-    pins 1-16 and its commons A-D pins 17-20, on a row of off-board wiring pads."""
+    The house symbol is a unit a pole, its throws pins 1-16 and its commons A-D pins
+    17-20; it carries no footprint, so the profile puts it on a row of wiring pads."""
     import json as _json
     parts = []
     for u, pole in enumerate("ABCD"):
@@ -252,7 +252,8 @@ def test_a_4p4t_rotary_is_a_shipped_symbol_a_unit_a_pole(tmp_path):
     from sch2kicad.circuit import load
     from sch2kicad.parts import load_profile, resolve_all
     for r in resolve_all(load(f), load_profile("tht"), SymbolResolver()):
-        assert r.lib_id == "sch2kicad:SW_Rotary_4x4" and r.problems == []
+        assert r.lib_id == "2025_PedalDivision_Switches:SW_Rotary_4x4" and r.problems == []
+        assert r.footprint == "Connector_PinHeader_2.54mm:PinHeader_1x20_P2.54mm_Vertical"
     rep = verify(build(f, tmp_path / "board").sch, render=False)
     assert rep.netlist_ok, rep.netlist_diffs
     assert rep.footprint_problems == []

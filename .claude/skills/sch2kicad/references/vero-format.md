@@ -232,9 +232,10 @@ curl; use the browser or do without.
   and `Ground+`, which read as nets `-9V` and `GND`. Set the user's lead order
   with `"pinout"` on each transistor; the layout's body letters give the holes.
 - **A 4P4T rotary** (the ME-7's selector, lugs A–D and 1–16) is one `ic` with
-  `"part": "4P4T"`, which resolves to `sch2kicad:SW_Rotary_4x4`. Throws 1–16 are
-  pins 1–16 (pole A 1–4, B 5–8, C 9–12, D 13–16), and the commons A–D are pins
-  17–20, on a 1x20 row of off-board wiring pads. Draw it a pole at a time, as
+  `"part": "4P4T"`, which resolves to the house `2025_PedalDivision_Switches:SW_Rotary_4x4`.
+  Throws 1–16 are pins 1–16 (pole A 1–4, B 5–8, C 9–12, D 13–16), and the commons
+  A–D are pins 17–20. The house symbol has no footprint, so a profile rule puts it
+  on a 1x20 row of off-board wiring pads. Draw it a pole at a time, as
   units A–D, like the dual-gang pot.
 - **A transformer used as a choke** (the 42TM013 in Shin-ei wahs) uses only the
   primary's outer leads. Its other pins sit alone on their strips (a warning),

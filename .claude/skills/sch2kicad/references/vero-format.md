@@ -199,6 +199,13 @@ a drawn sheet follows its drawing instead:
   just off the chip between them, parallel to its side.
 - **Grounds in one block** within a few grid of each other end level, there being
   no drawing to give a baseline.
+- **A run starts with what hangs off its pin and ends at a pad**: R2 up to VCC
+  comes onto LM386 pin 2's line first, and the IN pad slides level with it, so the
+  input runs straight in as the output runs straight out.
+- **Side-by-side parts keep five grid between their axes**, room for a name between
+  them (PT2399's R6, R8, R11), even where that costs a straight line to a pin.
+- The tidier of the two builds is judged on labels too: one on another label or a
+  body, or nearer another part than its own, counts against it.
 
 A vactrol drawn as an LED and an LDR is one part on the board: an `ic` with
 `"lib_id": "Isolator:VTL5C"`, `"footprint": "OptoDevice:PerkinElmer_VTL5C"`,

@@ -259,3 +259,25 @@ def test_a_lead_points_straight_at_what_it_joins(tmp_path):
     tops = min((c16.pin_pos(q.number) for q in c16.pins()), key=lambda p: p[1])
     mix = [placed["MIX"].pin_pos(n) for n in placed["MIX"].pinmap.values()]
     assert any(abs(p[0] - tops[0]) < 1e-3 for p in mix)
+
+
+def test_the_input_runs_straight_into_the_pin_it_feeds(tmp_path):
+    """Lane's IN comes straight across into LM386 pin 2, R2 hanging up off the line
+    to VCC, the way the output runs straight out to OUT. The run had stopped before
+    it began: pin 2's net holds only R2, which hangs across the run, and the pad."""
+    b, placed = _memory_lapse(tmp_path, "input")
+    row = round(placed["IC1"].pin_pos("2")[1], 3)
+    pad = next(pl for pl in b.layout.placed if pl.res.part.type == "port"
+               and b.pin_net(pl, next(iter(pl.pinmap.values()))) == "IN")
+    assert round(pad.pin_pos(next(iter(pad.pinmap.values())))[1], 3) == row
+    r2 = placed["R2"]
+    ends = sorted((r2.pin_pos(q.number) for q in r2.pins()), key=lambda p: p[1])
+    assert round(ends[1][1], 3) == row and ends[0][1] < row          # on the line, hanging up
+
+
+def test_side_by_side_parts_leave_room_for_their_names(tmp_path):
+    """Lined up with PT2399 pins 14, 13 and 12, R6, R8 and R11 stood a grid apart and
+    R8's name was pushed down beside R11's. Lane gave the stack room."""
+    b, placed = _memory_lapse(tmp_path, "room")
+    ys = sorted((placed[r].box()[1] + placed[r].box()[3]) / 2 for r in ("R6", "R8", "R11"))
+    assert ys[1] - ys[0] >= 5 * 1.27 - 1e-3 and ys[2] - ys[1] >= 5 * 1.27 - 1e-3

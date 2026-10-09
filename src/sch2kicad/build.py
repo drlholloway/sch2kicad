@@ -391,6 +391,7 @@ class Builder:
         self._line_up()
         self._straighten_chains()
         self._pin_caps()
+        self._give_room()
         self._power_row()
         self._room_for_supply_rails()
         self._place_unplaced()
@@ -682,7 +683,35 @@ class Builder:
         corners = {pt for pt, k in kinds.items() if k == {"h", "v"} and ends[pt] == 2}
         jogs = sum(1 for a, q in self.w.wires if math.dist(a, q) <= 2 * GRID + 1e-3
                    and (round(a[0], 3), round(a[1], 3)) in corners and (round(q[0], 3), round(q[1], 3)) in corners)
-        return len(corners) + 3 * jogs + 50 * len(self.labelled)
+        return len(corners) + 3 * jogs + 50 * len(self.labelled) + 5 * self.text_clashes()
+
+    def text_clashes(self) -> int:
+        """Labels that land on another part's label or body, or stand nearer another
+        part than their own: what Lane's spacing of R6, R8 and R11 was for (R8's name
+        had been pushed down beside R11's, reading as R11's), and what corners and
+        jogs alone cannot see."""
+        boxes = []
+        for inst in self.w.symbols:
+            if inst.ref.startswith("#"):
+                continue
+            for name, at in inst.field_pos.items():
+                if name in inst.hidden_fields or name in ("Footprint", "Datasheet", "Description"):
+                    continue
+                t = _field_text(inst, name)
+                if t:
+                    boxes.append((inst.ref, _text_box(at, t)))
+        bodies = [(pl.res.ref, pl.box()) for pl in self.layout.placed if _area(pl.box())]
+        n = sum(1 for i, (r1, b1) in enumerate(boxes) for r2, b2 in boxes[i + 1:] if r1 != r2 and _overlap(b1, b2))
+        n += sum(1 for r1, b1 in boxes for r2, b2 in bodies if r1 != r2 and _overlap(b1, b2))
+
+        def dist(box, body) -> float:
+            cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+            return math.hypot(max(body[0] - cx, 0, cx - body[2]), max(body[1] - cy, 0, cy - body[3]))
+        for ref, box in boxes:
+            own = [b for r, b in bodies if r == ref]
+            if own and any(dist(box, b) + 0.5 < min(dist(box, o) for o in own) for r, b in bodies if r != ref):
+                n += 1                                   # reads as someone else's
+        return n
 
     def _power_row(self, gap: int = 4) -> None:
         """Lay the supply out as one row in the top left, the way Lane draws it.
@@ -906,6 +935,54 @@ class Builder:
                 else:
                     break
 
+    def _give_room(self, pitch: int = 5, passes: int = 6) -> None:
+        """Keep side-by-side parts far enough apart for a label between them.
+
+        Lane's Memory Lapse spreads PT2399's R6, R8 and R11: each lined up with its pin
+        (14, 13, 12), they stood a grid apart with nowhere for their names, "R11 10K"
+        running into "R8 10K", and Lane gave the stack room even at the cost of R11
+        meeting pin 12 square. Two-pin parts lying parallel and alongside each other
+        keep ``pitch`` grid between their axes: the outer one steps away (down, or
+        right), as far as it takes, and the next one after it in turn. Only for a
+        schematic that is ours."""
+        if not self.c.ours:
+            return
+        lay = self.layout
+        two = [pl for pl in lay.placed if len(pl.pins()) == 2 and pl.res.part.type != "port"]
+
+        def axis_of(pl):
+            a, b = (pl.pin_pos(q.number) for q in pl.pins())
+            return 0 if abs(a[1] - b[1]) < 1e-3 else (1 if abs(a[0] - b[0]) < 1e-3 else None)
+
+        for _ in range(passes):
+            moved = False
+            for i, a in enumerate(two):
+                ax = axis_of(a)
+                if ax is None:
+                    continue
+                across = 1 - ax                                 # the coordinate between them
+                for c in two[i + 1:]:
+                    if axis_of(c) != ax:
+                        continue
+                    ea, ec = a.extent(), c.extent()
+                    if ea[ax + 2] <= ec[ax] or ec[ax + 2] <= ea[ax]:
+                        continue                                # not alongside
+                    ca = (a.box()[across] + a.box()[across + 2]) / 2
+                    cc = (c.box()[across] + c.box()[across + 2]) / 2
+                    need = pitch * GRID - abs(cc - ca)
+                    if need <= 1e-3 or abs(cc - ca) > 2 * pitch * GRID:
+                        continue
+                    outer = c if cc >= ca else a
+                    step = snap(need) if snap(need) >= need - 1e-3 else snap(need) + GRID
+                    old = outer.origin
+                    outer.origin = (snap(old[0] + step), old[1]) if across == 0 else (old[0], snap(old[1] + step))
+                    if lay.conflicts(outer, [o for o in lay.placed if o is not outer]):
+                        outer.origin = old
+                    else:
+                        moved = True
+            if not moved:
+                break
+
     def _pin_caps(self, out: int = 3, near: int = 3) -> None:
         """Stand a part bridging two pins on one side of a chip right beside them.
 
@@ -1031,10 +1108,24 @@ class Builder:
                 hold = 1 if d[0] else 0                  # the coordinate a run along d keeps
                 at = anchor.pin_pos(p.number)
                 run = (anchor, d, hold, at[hold], done)
+                # what hangs off the pin's own net comes to its line first: R2, from
+                # LM386 pin 2 up to VCC, before the run to IN is followed
+                for hp, hn in on_net.get(net, []):
+                    if id(hp) in done or hp is anchor or len(hp.pins()) > 2:
+                        continue
+                    if self._hang(hp, hn, at, hold, run):
+                        done.add(id(hp))
                 while net in on_net:
                     ahead = []
+                    ends = []                                   # a pad the run reaches ends it
                     for pl, n in on_net[net]:
                         far = self._through(pl, n)
+                        if id(pl) not in done and pl.res.part.type == "port" and len(pl.pins()) == 1:
+                            a = pl.pin_pos(n)
+                            dist = (a[0] - at[0]) * d[0] + (a[1] - at[1]) * d[1]
+                            if dist > 0 and pl.pin_dir(n) == (-d[0], -d[1]):
+                                ends.append((dist, pl, n))     # facing back down the run
+                            continue
                         if id(pl) in done or far is None:
                             continue
                         a = pl.pin_pos(n)
@@ -1046,6 +1137,12 @@ class Builder:
                         # a pot is turned to lie along the run; a two-pin part is drawn the way it is
                         if lies_along or pl.res.part.type in POTS:
                             ahead.append((dist, pl, n, far))
+                    if ends and (not ahead or min(ends, key=lambda t: t[0])[0] < min(ahead, key=lambda t: t[0])[0]):
+                        # the pad the run reaches — Lane's IN, level with LM386 pin 2
+                        _, pl, n = min(ends, key=lambda t: t[0])
+                        if slide(pl, hold, at[hold] - pl.pin_pos(n)[hold]):
+                            done.add(id(pl))
+                        break
                     if not ahead:
                         break
                     _, pl, n, far = min(ahead, key=lambda t: t[0])

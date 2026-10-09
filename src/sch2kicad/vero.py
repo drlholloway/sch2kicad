@@ -51,6 +51,9 @@ _DIP = {
                    "V+": "4", "V-": "11"},
 }
 
+# Other chips' supply pins, for a part drawn with "supply" (KiCad's power unit).
+_SUPPLY = {"LM13700": {"V+": "11", "V-": "6"}}
+
 
 def row_name(i: int) -> str:
     """0 → A, 25 → Z, 26 → AA."""
@@ -282,6 +285,10 @@ def derive(b: Board) -> Nets:
         if h in cut_holes:
             probs.append(f"wire {name} is soldered at {h.name}, which is cut")
         union(("wire", name), h)
+        # a pot lug written {"net": "GND"} is on the board's ground wire, not a
+        # ground of its own
+        if standard_name(name) in ("GND", "+9V"):
+            union(("wire", name), ("net", standard_name(name)))
     used: dict[Hole, list[str]] = {}
     isolated: dict[str, list[str]] = {}
     for p in b.parts:
@@ -425,11 +432,26 @@ def find_grid(b: Board, img) -> Grid | None:
         return None
     centres = [(s + e) / 2 for s, e in bands]
     pitch = (centres[-1] - centres[0]) / (n - 1)
-    xs = np.nonzero(mask[int(bands[0][0]):int(bands[-1][1]) + 1].any(axis=0))[0]
+    # the board's columns are copper down most of its height; a dithered label beside
+    # a strip (SabroTone's "Treble SW 1") has a stray copper-coloured pixel or two
+    span = mask[int(bands[0][0]):int(bands[-1][1]) + 1].sum(axis=0)
+    xs = np.nonzero(span > 0.3 * span.max())[0]
     m = b.cols if b.strips == "rows" else b.rows
     left, right = xs.min(), xs.max()
     along = (right - left + 1) / m
     first = left + along / 2
+    # The strip ends give the pitch but can be a pixel or two out, which misses a
+    # link bar two pixels wide (SabroTone). The holes, pure white on each strip's
+    # middle line, put the columns where they are.
+    offs = []
+    for s, e in bands:
+        row = a[int(round((s + e) / 2)), left:right + 1]
+        for x in np.nonzero(row.sum(axis=1) >= 760)[0] + left:
+            offs.append((x - first + along / 2) % along - along / 2)
+    if len(offs) >= 2 * m:
+        shift = float(np.median(offs))
+        if abs(shift) < along / 4:
+            first += shift
     if b.strips == "rows":
         return Grid(first, centres[0], along, pitch)
     return Grid(centres[0], first, pitch, along)
@@ -522,6 +544,23 @@ def look(b: Board) -> Seen:
             inner = [q for q in ring(cx, cy, 0.28 * p) if not _bar(q)]
             centre = px(cx, cy)
             if len(inner) < 8 or centre is None:
+                continue
+            # SabroTone (DIY Layout Creator): a red dot in the hole, a white square
+            # round it, and a red square outline round that. Squares, so sample squares;
+            # a link or a lead (its grey is darker than _lead's) may cross it.
+            def plain(q):
+                return not _bar(q) and not (int(q.max()) - int(q.min()) < 60 and int(q.sum()) < 700)
+
+            def square(half, n=8):
+                pts = [(-half + 2 * half * i / n, s * half) for i in range(n) for s in (-1, 1)]
+                pts += [(y, x) for x, y in pts]
+                return [q for q in (px(cx + x, cy + y) for x, y in pts) if q is not None and plain(q)]
+            dot = [q for q in ring(cx, cy, 0.1 * p, n=12) if plain(q)]
+            white, outline = square(0.25 * p), square(0.35 * p)
+            if dot and white and outline and sum(_red(q) for q in dot) / len(dot) >= 0.5 and \
+                    sum(int(q.sum()) > 720 for q in white) / len(white) >= 0.6 and \
+                    sum(_red(q) for q in outline) / len(outline) >= 0.6:
+                seen.cuts.add(h)
                 continue
             # the other style: a red dot or small red square in the hole, on a pale
             # square, sometimes under a lead or a chip's translucent body. A red body
@@ -731,8 +770,9 @@ def _keys_circuit(c, named: set[str]) -> dict[str, Counter]:
             continue
         for pin, ref in p.pins.items():
             add(ref.net, _key(p.type, p.ref, pin))
+        rails = _SUPPLY.get(re.sub(r"[A-Z]*$", "", (p.part or p.value or "").upper()), {})
         for k, n in p.supply.items():
-            add(n, f"{p.ref}.{k}")
+            add(n, f"{p.ref}.{rails.get(k, k)}")
     for name in list(out):
         if name in named:
             out[name][f"name:{name}"] += 1

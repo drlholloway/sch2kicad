@@ -152,6 +152,15 @@ FuzzDog (pedalparts.co.uk) build docs are a good designer's schematic for clones
 (the Mind Warp is FuzzDog's Brain Bomb). Their parts lists have no type column; a
 value with a taper letter is read as a knob.
 
+SabroTone layouts (DIY Layout Creator, e.g. the Engineer's Thumb) print every
+part's ref and a full parts list; keep their refs. A cut is a red dot in a white
+square with a red outline, links are blue, and a chip's cuts under its body come
+through only as GIF dither, so they are "not seen". A resistor's body is drawn
+longer than one pitch: its leads are at the holes either side of the body's
+centre. Write a lug wired to ground or a jack as `{"net": "GND"}` / `{"net": "OUT"}`;
+GND joins the board's ground wire. A chip with a power unit (LM13700) is drawn
+with `"supply"`, and the board check maps it to package pins.
+
 Off-board wiring notes under the layout can be wrong. Read the post's comments
 for corrections ("Surge 2 connects to Feedback 2, not Feedback 3"), and ask the
 user which to follow.

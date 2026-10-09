@@ -34,6 +34,8 @@
 "BC558" = "CBE"
 "BC559" = "CBE"
 "BC560" = "CBE"
+"BC327" = "CBE"       # ON Semi / Diodes Inc datasheets; the SabroTone Engineer's Thumb prints C B E
+"BC337" = "CBE"
 "P2N2222A" = "CBE"
 
 [fet]

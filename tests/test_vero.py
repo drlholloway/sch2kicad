@@ -78,6 +78,16 @@ def test_wires_name_their_nets():
     assert {"IN", "GND", "+9V", "TONE_2"} <= set(nets.names)
 
 
+def test_a_lug_wired_to_ground_is_on_the_boards_ground():
+    """'Level 1 -> Ground': the lug goes to the ground wire's net, not a second ground."""
+    b = _board(wires=[{"name": "Ground", "at": "B6"}, {"name": "Level 3", "at": "A1"}],
+               parts=[{"ref": "R1", "type": "resistor", "pins": {"1": "A3", "2": "B3"}},
+                      {"ref": "LEVEL", "type": "pot", "value": "A10K",
+                       "pins": {"1": {"net": "GND"}, "2": {"net": "OUT"}, "3": "Level 3"}}])
+    nets = derive(b)
+    assert _net_of(nets, "LEVEL.1") == _net_of(nets, "R1.2") == "GND"
+
+
 # ------------------------------------------------------------------ what the reading gets wrong
 
 def test_a_lead_in_a_cut_hole_is_a_problem():
@@ -302,8 +312,7 @@ def test_cuts_under_a_chip_are_seen_and_a_capacitor_is_not_a_cut():
     assert "O5" not in {h.name for h in seen.cuts}
     assert compare_seen(b, seen) == [
         "cut at B6 is in the reading, but no cut mark shows there (hidden under a part, or a misread hole)",
-        "cut at H6 is in the reading, but no cut mark shows there (hidden under a part, or a misread hole)",
-        "link F8-K8 is in the reading, but no black bar shows at one end (under a part, or a misread end)"]
+        "cut at H6 is in the reading, but no cut mark shows there (hidden under a part, or a misread hole)"]
 
 
 # ------------------------------------------------------------------ lettered columns, red-dot cuts
@@ -383,3 +392,34 @@ def test_cut_colours_of_the_2019_layouts():
         assert _red(cut), cut
     for other in [(204, 0, 102), (255, 153, 51), (230, 75, 60), (255, 107, 71), (243, 102, 123)]:
         assert not _red(other), other
+
+
+def test_the_sabrotone_style_finds_its_grid_cuts_and_links(tmp_path):
+    """DIY Layout Creator boards (SabroTone): a cut is a red dot in a white square in a
+    red outline, a link a blue bar two pixels wide. The strips' ends put the columns a
+    few pixels out and a dithered label beside a strip has a copper-coloured pixel, so
+    the grid comes from the holes."""
+    from PIL import Image, ImageDraw
+    im = Image.new("RGB", (300, 120), "white")
+    d = ImageDraw.Draw(im)
+    X, Y = (lambda c: 30 + 20 * (c - 1)), (lambda r: 30 + 20 * r)
+    for r in range(4):
+        d.rectangle((22, Y(r) - 7, 219, Y(r) + 6), fill=(255, 170, 51))
+        for c in range(1, 11):
+            d.rectangle((X(c) - 1, Y(r) - 1, X(c) + 1, Y(r) + 1), fill="white")
+    im.putpixel((290, Y(1)), (255, 170, 51))                  # the label's stray pixel
+    x, y = X(4), Y(1)                                          # the cut at B4...
+    d.rectangle((x - 7, y - 7, x + 7, y + 7), fill=(255, 0, 0))
+    d.rectangle((x - 5, y - 5, x + 5, y + 5), fill="white")
+    d.ellipse((x - 3, y - 3, x + 3, y + 3), fill=(255, 0, 0))
+    d.rectangle((x - 1, Y(0), x + 1, Y(2)), fill=(102, 85, 102))   # ...with a lead across it
+    d.rectangle((X(7) - 1, Y(0), X(7), Y(3)), fill=(0, 0, 255))     # the link A7-D7
+    d.rectangle((X(2) - 7, Y(2) - 7, X(2) + 7, Y(2) + 7), fill=(255, 0, 0))   # a red body, not a cut
+    im.save(tmp_path / "t.png")
+    b = _board(board={"rows": 4, "cols": 10}, source={"image": "t.png"})
+    b.path = tmp_path / "b.board.json"
+    seen = look(b)
+    g = seen.grid
+    assert g and abs(g.x0 - 30) < 1 and abs(g.dx - 20) < 0.6, g
+    assert {h.name for h in seen.cuts} == {"B4"}
+    assert [(x.name, y.name) for x, y in seen.links] == [("A7", "D7")]

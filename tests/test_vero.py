@@ -216,6 +216,35 @@ def test_an_op_amp_is_split_into_units_and_checked_by_package_pin(tmp_path):
     assert not check_circuit(c, path).ok
 
 
+def test_a_dpdt_is_split_into_poles_and_checked_by_lug(tmp_path):
+    """The Berserk's Mk1.5/Mk2 switch: lugs 1-2-3 are one pole, 4-5-6 the other."""
+    data = {"schema": "sch2kicad/vero@1", "name": "switch", "board": {"rows": 7, "cols": 4},
+            "wires": [{"name": "Input", "at": "A1"}, {"name": "Output", "at": "F1"},
+                      {"name": "Ground", "at": "G4"}] +
+                     [{"name": f"Switch {n}", "at": f"{r}1"} for n, r in zip("2356", "BCDE")],
+            "parts": [{"ref": "C1", "type": "capacitor", "pins": {"1": "A2", "2": "B2"}},
+                      {"ref": "R1", "type": "resistor", "pins": {"1": "C2", "2": "G2"}},
+                      {"ref": "R2", "type": "resistor", "pins": {"1": "D2", "2": "F2"}},
+                      {"ref": "R3", "type": "resistor", "pins": {"1": "E2", "2": "G3"}},
+                      {"ref": "SW1", "type": "switch_dpdt", "action": "on/on",
+                       "pins": {"1": {"net": "J"}, "2": "Switch 2", "3": "Switch 3",
+                                "4": {"net": "J"}, "5": "Switch 5", "6": "Switch 6"}}]}
+    path = tmp_path / "b.board.json"
+    path.write_text(json.dumps(data))
+    b = load_board(path)
+    sk = skeleton(b, derive(b))
+    poles = {p["unit"]: p["pins"] for p in sk["parts"] if p["ref"] == "SW1"}
+    assert poles == {"A": {"a": "J", "com": "SWITCH_2", "b": "SWITCH_3"},
+                     "B": {"a": "J", "com": "SWITCH_5", "b": "SWITCH_6"}}
+    c = from_dict(sk)
+    assert check_circuit(c, path).ok
+    # pole B's throws swapped in the drawing: lug 4 is not lug 6
+    for p in c.parts:
+        if p.ref == "SW1" and p.unit == "B":
+            p.pins["a"].net, p.pins["b"].net = p.pins["b"].net, p.pins["a"].net
+    assert not check_circuit(c, path).ok
+
+
 # ------------------------------------------------------------------ the image read again
 
 needs_image = pytest.mark.skipif(not (CIRCUITS.parent / "ALEPH NULL MOKA POT FUZZ.png").exists(),

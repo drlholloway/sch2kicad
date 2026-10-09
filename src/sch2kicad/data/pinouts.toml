@@ -36,6 +36,8 @@
 "BC560" = "CBE"
 "BC327" = "CBE"       # ON Semi / Diodes Inc datasheets; the SabroTone Engineer's Thumb prints C B E
 "BC337" = "CBE"
+"2N3704" = "ECB"      # ON Semi / Central datasheets; the Fjord Fuzz Berserk schematic says ECB
+"S8050" = "EBC"       # UTC / Wing Shing TO-92 datasheets; the Fjord Fuzz Freia layout prints E B C
 "P2N2222A" = "CBE"
 
 [fet]

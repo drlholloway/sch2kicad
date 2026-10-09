@@ -54,6 +54,10 @@ _DIP = {
 # Other chips' supply pins, for a part drawn with "supply" (KiCad's power unit).
 _SUPPLY = {"LM13700": {"V+": "11", "V-": "6"}}
 
+# A DPDT's lugs as layouts number them, 1-2-3 down one pole and 4-5-6 down the
+# other ("Switch 1 to Switch 4"), as circuit.json draws them: unit → pin → lug.
+_LUGS = {"switch_dpdt": {"A": {"a": "1", "com": "2", "b": "3"}, "B": {"a": "4", "com": "5", "b": "6"}}}
+
 
 def row_name(i: int) -> str:
     """0 → A, 25 → Z, 26 → AA."""
@@ -768,6 +772,11 @@ def _keys_circuit(c, named: set[str]) -> dict[str, Counter]:
                 rail = canonical_pin(p.type, k)
                 add(n, f"{p.ref}.{dip.get(rail, rail)}")
             continue
+        if p.type in _LUGS:
+            lugs = _LUGS[p.type].get(p.unit or "", {})
+            for pin, ref in p.pins.items():
+                add(ref.net, f"{p.ref}.{lugs.get(canonical_pin(p.type, pin), pin)}")
+            continue
         for pin, ref in p.pins.items():
             add(ref.net, _key(p.type, p.ref, pin))
         rails = _SUPPLY.get(re.sub(r"[A-Z]*$", "", (p.part or p.value or "").upper()), {})
@@ -867,6 +876,11 @@ def skeleton(b: Board, nets: Nets) -> dict:
                 if unit in ("", "A"):
                     e["supply"] = {"V+": net(dip["V+"]), "V-": net(dip["V-"])}
                 parts.append(e)
+            continue
+        if p.type in _LUGS:
+            for unit, m in _LUGS[p.type].items():
+                parts.append({"ref": p.ref, "type": p.type, **base, "unit": unit,
+                              "pins": {sem: net(lug) for sem, lug in m.items()}})
             continue
         names = list(p.holes) + list(p.wires) + list(p.nets) + p.nc
         parts.append({"ref": p.ref, "type": p.type, **base, "pins": {pin: net(pin) for pin in names}})

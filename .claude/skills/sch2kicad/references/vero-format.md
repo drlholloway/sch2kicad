@@ -93,6 +93,12 @@ So a vero conversion is two files:
   and the check maps them back.
 - **Off-board parts** (pots, switches) go in `parts` with their lugs on wire names.
   The layout lists their values ("Gain: 100kB" → `B100K`).
+- **A DPDT** is `switch_dpdt` with lugs `"1"`–`"6"`: 1-2-3 down one pole, 4-5-6 down
+  the other, 2 and 5 the commons. The skeleton splits it into poles A and B
+  (`a`/`com`/`b`), and the check maps them back to lugs. Lugs joined off the board
+  ("Switch 1 to Switch 4") share a made-up net: `{"net": "SW_1_4"}` on both.
+- **A lug that is also a jack** ("Input to Gain 3" where Gain 3 is soldered to the
+  board) is a second wire at the same hole: `{"name": "Input", "at": "E15"}`.
 
 ## The designer's schematic
 

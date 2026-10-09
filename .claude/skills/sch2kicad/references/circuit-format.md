@@ -122,6 +122,10 @@ Unlisted nets are signals. List only what needs a kind:
   then come in on the house jack sockets (`JIN`/`JOUT`: tip to the signal, the other
   pin to ground), with no 3PDT array and no separate jack ground pad. Bring the
   footswitch out as a pad per lug it uses, named for the lug (`FOOTSW 2`).
+- `arrangement` — `"ours"` when the positions are a schematic drawn for the reading,
+  not pixels of a drawing (a stripboard reading's `final/` copy; a reading with a
+  `"board"` is ours already). Nothing then traces its image, and it is laid out by
+  Lane's rules for boards (see vero-format.md) instead of following a drawing.
 - `texts` — annotations that are not nets: measured voltages (`"kind": "voltage"`),
   remarks next to parts. Knob names go in `label`, not here.
 - `notes` — the NOTES block, one string per note.

@@ -130,3 +130,83 @@ def test_a_stripboard_reading_takes_no_guide_from_its_board():
     read as wires to follow and ground leads to line up."""
     b = Builder(load(SAMPLES / "circuits" / "memory-lapse.circuit.json"), load_profile("tht"), "vero")
     assert b._drawn() is None and b._flag_rows({}) == {}
+
+
+def test_the_supply_comes_in_on_the_house_power_socket(tmp_path):
+    """Lane's boards take the supply on Conn_01x02_Socket_Power, value POWER, pin 1 to
+    the supply ahead of the reverse-polarity diode and pin 2 to ground, rather than
+    a lone square pad. Memory Lapse's +9V is such a net: the rail proper, VCC, starts
+    past D1. LED+ is power-ish by name but no supply, and stays a pad."""
+    b = Builder(load(SAMPLES / "circuits" / "memory-lapse.circuit.json"), load_profile("tht"), "power")
+    b.run(tmp_path)
+    sockets = [pl for pl in b.layout.placed if pl.res.lib_id.endswith(":Conn_01x02_Socket_Power")]
+    assert len(sockets) == 1 and sockets[0].res.value == "POWER"
+    j = sockets[0]
+    assert b.pin_net(j, j.pinmap["+"]) == "+9V" and b.pin_net(j, j.pinmap["-"]) == "GND"
+    pads = {pl.res.value for pl in b.layout.placed if pl.res.ref.startswith("H")}
+    assert pads == {"LED+"}
+
+
+def test_a_run_lies_straight_along_the_pin_it_feeds(tmp_path):
+    """Lane laid Memory Lapse's PT2399 pin 2 run out on the pin's own row: R3, then
+    STABILITY turned to lie along the row, then C14, with C11 hung below it and its
+    ground under it. Drawn part by part, the run stepped up and down at every part."""
+    b = Builder(load(SAMPLES / "circuits" / "memory-lapse.circuit.json"), load_profile("tht"), "runs")
+    b.run(tmp_path)
+    placed = {pl.res.ref: pl for pl in b.layout.placed}
+
+    def ys(ref, *sems):
+        pl = placed[ref]
+        return {round(pl.pin_pos(pl.pinmap[s])[1], 3) for s in sems}
+    ic2 = placed["IC2"]
+    row = {round(ic2.pin_pos("2")[1], 3)}
+    assert ys("R3", *placed["R3"].pinmap) == row
+    assert ys("STABILITY", "ccw", "cw") == row
+    assert ys("C14", *placed["C14"].pinmap) == row
+    c11 = placed["C11"]
+    plus, minus = (c11.pin_pos(c11.pinmap[s]) for s in ("+", "-"))
+    assert round(plus[1], 3) in row and minus[1] > plus[1]         # hung below, ground under
+
+
+def test_the_supply_is_one_row_in_the_top_left(tmp_path):
+    """Lane draws the supply as a row across the top left corner: POWER socket, D1, the
+    78L05, with C4 and C1 hanging under the nodes either side of the regulator, their
+    grounds level, and VCC flagged once at its node rather than at the regulator's
+    input as well."""
+    b = Builder(load(SAMPLES / "circuits" / "memory-lapse.circuit.json"), load_profile("tht"), "supply")
+    b.run(tmp_path)
+    placed = {pl.res.ref: pl for pl in b.layout.placed}
+
+    def at(ref, sem):
+        pl = placed[ref]
+        return pl.pin_pos(pl.pinmap[sem])
+    row = {round(at(*p)[1], 3) for p in (("J1", "+"), ("D1", "A"), ("D1", "K"), ("REG1", "VI"), ("REG1", "VO"),
+                                         ("C4", "+"), ("C1", "+"))}
+    assert len(row) == 1
+    assert at("J1", "+")[0] < at("D1", "A")[0] < at("D1", "K")[0] < at("C4", "+")[0] < at("REG1", "VI")[0] \
+        < at("REG1", "VO")[0] < at("C1", "+")[0]
+    assert at("C4", "-")[1] > at("C4", "+")[1] and at("C1", "-")[1] > at("C1", "+")[1]
+    grounds = {b.flag_rows[f"{r}.{placed[r].pinmap[s]}"] for r, s in (("C4", "-"), ("C1", "-"), ("REG1", "GND"))}
+    assert len(grounds) == 1
+    supply = [placed[r].extent() for r in ("J1", "D1", "C4", "REG1", "C1")]
+    rest = [pl.extent() for pl in b.layout.placed if pl.res.ref not in ("J1", "D1", "C4", "REG1", "C1")]
+    x0, x1 = min(e[0] for e in supply), max(e[2] for e in supply)
+    under = [e for e in rest if e[0] < x1 and e[2] > x0]                       # in the row's columns
+    assert under and max(e[3] for e in supply) < min(e[1] for e in under)       # nothing above it there
+    parts = [pl.extent() for pl in b.layout.placed
+             if pl.res.ref not in ("J1", "D1", "C4", "REG1", "C1") and pl.res.part.type != "port"]
+    assert x0 <= min(e[0] for e in parts) + 2 * 2.54                            # left of every part
+    assert b.power_nodes["VCC"][f"C4.{placed['C4'].pinmap['+']}"] == "lead"
+
+
+def test_a_designer_copy_is_laid_out_as_ours_and_never_traced(tmp_path):
+    """A stripboard reading's final/ copy leaves its board off, since it no longer
+    matches it, but its positions are still the schematic drawn for the board and
+    its image still the board. Marked "arrangement": "ours", it takes no guide from
+    that image and is laid out like the board reading it came from."""
+    c = load(SAMPLES / "circuits" / "memory-lapse.circuit.json")
+    c.board, c.arrangement = "", "ours"
+    b = Builder(c, load_profile("tht"), "final")
+    assert b._drawn() is None and b._flag_rows({}) == {}
+    b.run(tmp_path)
+    assert "VCC" in b.power_nodes                      # the supply row, as for the board

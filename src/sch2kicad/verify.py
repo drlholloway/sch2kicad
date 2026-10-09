@@ -541,7 +541,8 @@ def verify(sch: Path, build_json: Path | None = None, source_image: Path | None 
         # drawn from a stripboard: the board is the source, and it is checked exactly
         from .vero import check_circuit
         rep.board = check_circuit(circuit, circuit.board_path())
-    elif circuit is not None:
+    elif circuit is not None and not circuit.ours:
+        # (a schematic drawn for the reading has no drawing to check it against)
         try:
             from .trace import crosscheck_circuit
             rep.drawing = crosscheck_circuit(circuit)

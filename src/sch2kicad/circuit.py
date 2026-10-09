@@ -108,6 +108,15 @@ class Circuit:
     # a stripboard layout this schematic was drawn from (board.json, beside circuit.json):
     # verify checks the schematic connects exactly what the board connects
     board: str = ""
+    # "ours" when the positions are a schematic drawn for the reading rather than pixels
+    # of a drawing: a stripboard reading's designer version (final/), which no longer
+    # matches its board. A reading with a board is ours already.
+    arrangement: str = ""
+
+    @property
+    def ours(self) -> bool:
+        """Is the arrangement ours to lay out, rather than a drawing's to follow?"""
+        return bool(self.board) or self.arrangement == "ours"
 
     # ------------------------------------------------------------------ nets
     def net(self, name: str) -> Net:
@@ -222,7 +231,8 @@ def from_dict(data: dict) -> Circuit:
                    bom=[dict(r) for r in data.get("bom") or []],
                    bom_accept={str(k): str(v) for k, v in (data.get("bom_accept") or {}).items()},
                    true_bypass=bool(data.get("true_bypass", True)),
-                   board=str(data.get("board") or ""))
+                   board=str(data.get("board") or ""),
+                   arrangement=str(data.get("arrangement") or ""))
 
 
 # ------------------------------------------------------------ value parsing

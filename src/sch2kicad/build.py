@@ -12,9 +12,9 @@ from pathlib import Path
 
 from .circuit import Circuit, Part, PinRef, load
 from .geometry import (GRID, Layout, Orient, Placed, apply, fit_orientation, pin_outward, pin_world,
-                       snap, spiral)
+                       choose_sheet, snap, spiral)
 from .kicad_env import kicad_cli
-from .parts import Profile, Resolved, canonical_pin, load_profile, resolve_all
+from .parts import POTS, Profile, Resolved, canonical_pin, load_profile, resolve_all
 from .router import Cell, NetRoute, Router, Terminal, cell_of, normalise
 from .schematic import (SchematicWriter, SymbolInstance, copy_bundled_symbols, field_positions,
                         text_box as _text_box, write_project)
@@ -46,6 +46,11 @@ def safe_name(s: str) -> str:
 
 # ------------------------------------------------------------------- ports
 
+# a port that is the supply coming in, by its name: 9V, +9V, 18V, VCC, V+, +, POWER,
+# PWR, DC (and a sheet's "+9V(T)"); a footswitch pad that happens to sit on +9V is not
+SUPPLY_PORT = re.compile(r"^(\+?\d+(\.\d+)?\s*V(\(\w+\))?|VCC|V\+|\+|POWER|PWR|DC(\s*IN)?)$", re.I)
+
+
 def _port_parts(circuit: Circuit, profile: Profile, symbols: SymbolResolver) -> tuple[list[Resolved], list[str]]:
     """Each off-board connection becomes a pad: a unit of the 3PDT pad array or its own pad."""
     cfg = profile.ports
@@ -62,10 +67,28 @@ def _port_parts(circuit: Circuit, profile: Profile, symbols: SymbolResolver) -> 
     used_array: dict[str, str] = {}
     used_jacks: set[str] = set()
     pad_n = jack_n = 0
+    header = cfg.get("power_header")
     for port in circuit.ports:
         name = port.name.strip()
         key = aliases.get(name.upper(), name.upper())
-        if key in jacks and key not in used_jacks:
+        # the supply input is often a plain net: the rail proper starts past the
+        # reverse-polarity diode, and the socket is what comes before it
+        if header and circuit.net_kind(port.net) != "ground" and SUPPLY_PORT.match(name):
+            sym = symbols.get(header)
+            by_name = {p.name: p.number for p in sym.pins_for(1)}
+            if not {"+", "-"} <= set(by_name):
+                problems.append(f"port {name}: {header} has no + and - pins")
+                continue
+            jack_n += 1
+            while f"J{jack_n}" in taken:
+                jack_n += 1
+            part = Part(ref=f"J{jack_n}", type="port", value="POWER",
+                        pins={"+": PinRef("+", port.net, port.at), "-": PinRef("-", ground, None)})
+            out.append(Resolved(part=part, lib_id=header, symbol=sym, unit=1,
+                                footprint=sym.props.get("Footprint", ""), value="POWER", fields={},
+                                pinmap={"+": by_name["+"], "-": by_name["-"]}))
+            header = None                     # one supply input; a second stays a pad
+        elif key in jacks and key not in used_jacks:
             sym = symbols.get(jacks[key])
             by_name = {p.name.upper(): p.number for p in sym.pins_for(1)}
             if not {"T", "R"} <= set(by_name):
@@ -122,8 +145,9 @@ def _port_parts(circuit: Circuit, profile: Profile, symbols: SymbolResolver) -> 
 
 class Builder:
     def __init__(self, circuit: Circuit, profile: Profile, project: str, spacing: float = 1.15,
-                 ports_as: str = "pads"):
+                 ports_as: str = "pads", chains: bool = True):
         self.c = circuit
+        self.chains = chains
         self.profile = profile
         self.project = project
         self.symbols = SymbolResolver()
@@ -152,6 +176,7 @@ class Builder:
         self.open_on_power: set[str] = set()      # nets with an open driver pin and a PWR_FLAG
         self.flag_boxes: list[tuple] = []         # every flag symbol drawn, with its value text
         self.flag_rows: dict[str, float] = {}     # terminal owner → the line its flag stands on
+        self.power_nodes: dict[str, dict[str, str]] = {}   # rail → {owner: "lead"/"follow"} on the power row
 
     # ............................................................ helpers
     def pin_net(self, pl: Placed, number: str) -> str | None:
@@ -345,9 +370,11 @@ class Builder:
                     tgt = min((p2.pin_pos(pn.number) for p2 in mates for pn in p2.pins()
                                if self.pin_net(p2, pn.number) == net),
                               key=lambda q: math.dist(q, pl.pin_pos(number)))
-                    if len(pl.pins()) > 1:
+                    if len(pl.pins()) > 1 and pl.res.value != "POWER":
                         # a jack comes in from the side of the box: level, toward its
-                        # mate, or toward the middle when the mate is straight above
+                        # mate, or toward the middle when the mate is straight above.
+                        # (The power socket faces its mate as the pad it replaces did:
+                        # Musket's +9V comes down onto its bus, not in beside it.)
                         tip = pl.pin_pos(number)
                         if abs(tgt[0] - tip[0]) < GRID:
                             bx0, _, bx1, _ = lay.bounds()
@@ -362,6 +389,8 @@ class Builder:
                 if len(pl.pins()) > 1 and lay.conflicts(pl, others, margin=2.54):
                     lay.find_spot(pl, others, radius=30)
         self._line_up()
+        self._straighten_chains()
+        self._power_row()
         self._room_for_supply_rails()
         self._place_unplaced()
         self.w.paper = lay.sheet.paper
@@ -434,7 +463,7 @@ class Builder:
 
         # power and ground nets drawn with flags
         self.net_terms = terms
-        self.flag_rows = self._flag_rows(terms)
+        self.flag_rows.update(self._flag_rows(terms))
         flagged = [n for n in terms if self._draw_as_flags(n)]
         by_flag = set(flagged)
         orphans: dict[str, list[Terminal]] = {}
@@ -638,6 +667,492 @@ class Builder:
             if not changed:
                 break
 
+    def untidiness(self) -> float:
+        """How untidy the wiring came out: a jog (a step of two grid or less between two
+        bends) costs three corners, a net left to labels fifty. Only meaningful after
+        ``run``."""
+        kinds: dict = {}
+        ends: dict = {}
+        for a, q in self.w.wires:
+            for pt in (a, q):
+                pt = (round(pt[0], 3), round(pt[1], 3))
+                kinds.setdefault(pt, set()).add("h" if abs(a[1] - q[1]) < 1e-3 else "v")
+                ends[pt] = ends.get(pt, 0) + 1
+        corners = {pt for pt, k in kinds.items() if k == {"h", "v"} and ends[pt] == 2}
+        jogs = sum(1 for a, q in self.w.wires if math.dist(a, q) <= 2 * GRID + 1e-3
+                   and (round(a[0], 3), round(a[1], 3)) in corners and (round(q[0], 3), round(q[1], 3)) in corners)
+        return len(corners) + 3 * jogs + 50 * len(self.labelled)
+
+    def _power_row(self, gap: int = 4) -> None:
+        """Lay the supply out as one row in the top left, the way Lane draws it.
+
+        Lane's Memory Lapse: the POWER socket, D1, then the 78L05 on one row across the
+        top left corner — VCC's cap hanging below the node between D1 and the regulator,
+        V5's below the regulator's output, their grounds level — with VCC flagged once,
+        at its node, the regulator's input wired to it along the row rather than given a
+        flag of its own. The supply is found from the socket: a part in series (the
+        reverse-polarity diode, a resistor) while the node is not yet a rail, a
+        regulator (pins VI/VO/GND or IN/OUT/GND) after, and on every node the caps
+        that go from it to ground. Everything else keeps its arrangement and moves
+        down, as a whole, if the row needs the room.
+
+        Only for a stripboard reading: on a drawn sheet the supply stays where its
+        designer drew it.
+        """
+        lay = self.layout
+        if not self.c.ours:
+            return
+        sock = next((pl for pl in lay.placed if pl.res.part.type == "port" and pl.res.value == "POWER"
+                     and "+" in pl.pinmap), None)
+        if sock is None:
+            return
+        ground = {n for n in self.c.all_net_names() if self.c.net_kind(n) == "ground"}
+
+        def reg_pins(pl: Placed):
+            for i, o in (("VI", "VO"), ("IN", "OUT")):
+                if {i, o, "GND"} <= set(pl.pinmap):
+                    return pl.pinmap[i], pl.pinmap[o], pl.pinmap["GND"]
+            return None
+
+        used = {id(sock)}
+        series: list[tuple[Placed, str, str]] = []           # part, in pin, out pin
+        nodes: list[list[tuple[Placed, str, str]]] = []      # per node: shunt, node pin, ground pin
+        net = self.pin_net(sock, sock.pinmap["+"])
+        while net and len(series) < 4:
+            shunt, nxt = [], []
+            for pl in lay.placed:
+                if id(pl) in used or pl.res.part.type == "port":
+                    continue
+                pins = [q.number for q in pl.pins()]
+                nets = {n: self.pin_net(pl, n) for n in pins}
+                if net not in nets.values():
+                    continue
+                if len(pins) == 2:
+                    a = next(n for n in pins if nets[n] == net)
+                    b = next(n for n in pins if n != a)
+                    if nets[b] in ground:
+                        shunt.append((pl, a, b))
+                    elif not self._draw_as_flags(net) and nets[b] and nets[b] != net:
+                        nxt.append((pl, a, b))
+                else:
+                    rp = reg_pins(pl)
+                    if rp and nets[rp[0]] == net:
+                        nxt.append((pl, rp[0], rp[1]))
+            nodes.append(shunt)
+            for pl, _, _ in shunt:
+                used.add(id(pl))
+            if len(nxt) != 1:
+                break
+            pl, a, b = nxt[0]
+            series.append(nxt[0])
+            used.add(id(pl))
+            net = self.pin_net(pl, b)
+        if not series:
+            return
+        group = [sock] + [pl for pl, _, _ in series] + [pl for sh in nodes for pl, _, _ in sh]
+        old = {id(pl): (pl.orient, pl.origin) for pl in group}
+        from .geometry import ORIENTS
+
+        def turn(pl: Placed, a: str, b: str, down: str | None = None) -> bool:
+            """Turn ``pl`` so ``a`` -> ``b`` runs left to right on one level (and ``down``
+            points down), keeping its current turn if that already does."""
+            for o in [pl.orient] + [o for o in ORIENTS if o != pl.orient]:
+                pl.orient = o
+                pa, pb = pl.pin_pos(a), pl.pin_pos(b)
+                if abs(pa[1] - pb[1]) < 1e-3 and pb[0] > pa[0] and (down is None or pl.pin_dir(down) == (0, 1)):
+                    return True
+            return False
+
+        def put(pl: Placed, pin: str, at) -> None:
+            now = pl.pin_pos(pin)
+            pl.origin = (snap(pl.origin[0] + at[0] - now[0]), snap(pl.origin[1] + at[1] - now[1]))
+
+        # the row, from x = 0, y = 0; moved into the corner afterwards. Each node gets
+        # ``gap`` grid either side of each cap hanging from it, so a value never sits
+        # on the next part's
+        put(sock, sock.pinmap["+"], (0.0, 0.0))
+        x = 0.0
+        step = gap * GRID
+
+        def hang_from(shunts, x: float) -> float:
+            for sh, n_pin, g_pin in shunts:
+                if self._stand(sh, n_pin, g_pin):
+                    x += step
+                    put(sh, n_pin, (snap(x), 0.0))
+            return x
+
+        for k, (pl, a, b) in enumerate(series):
+            rp = reg_pins(pl)
+            if not turn(pl, a, b, rp[2] if rp else None):
+                for p2 in group:
+                    p2.orient, p2.origin = old[id(p2)]
+                return
+            x = hang_from(nodes[k], x) + step
+            put(pl, a, (snap(x), 0.0))
+            x = pl.pin_pos(b)[0]
+        if len(nodes) > len(series):
+            hang_from(nodes[len(series)], x)
+        # into the top left corner of what is already there, everything else out of its way
+        others = [pl for pl in lay.placed if pl not in group]
+        ex = [pl.extent() for pl in group]
+        gx0, gy0 = min(e[0] for e in ex), min(e[1] for e in ex)
+        ox = [pl.extent() for pl in others] or ex
+        cx, cy = snap(min(e[0] for e in ox)), snap(min(e[1] for e in ox))
+        dx, dy0 = snap(cx - gx0), snap(cy - gy0)     # one shift for all, or each rounds its own way
+        for pl in group:
+            pl.origin = (round(pl.origin[0] + dx, 4), round(pl.origin[1] + dy0, 4))
+        gb = _grow(_union_all([pl.extent() for pl in group]), 2 * GRID)
+        clash = [pl.extent() for pl in others if _overlap(gb, pl.extent())]
+        if clash:
+            dy = snap(gb[3] - min(e[1] for e in clash) + GRID)
+            for pl in others:
+                pl.origin = (pl.origin[0], snap(pl.origin[1] + dy))
+        # each rail node on the row: one flag, on the pin that hangs below it
+        for k, hang in enumerate(nodes):
+            if not hang:
+                continue
+            node_net = self.pin_net(hang[0][0], hang[0][1])
+            if not self._draw_as_flags(node_net):
+                continue
+            row = {f"{hang[0][0].res.ref}.{hang[0][1]}": "lead"}
+            for pl, a, b in series:
+                for pin in (a, b):
+                    if self.pin_net(pl, pin) == node_net:
+                        row[f"{pl.res.ref}.{pin}"] = "follow"
+            for sh, n_pin, _ in hang[1:]:
+                row[f"{sh.res.ref}.{n_pin}"] = "follow"
+            self.power_nodes.setdefault(node_net, {}).update(row)
+        # and the grounds under the row level
+        downs = [(pl, g) for sh in nodes for pl, _, g in sh] + \
+                [(pl, reg_pins(pl)[2]) for pl, _, _ in series if reg_pins(pl)]
+        downs = [(pl, g) for pl, g in downs if pl.pin_dir(g) == (0, 1)]
+        if len(downs) >= 2:
+            line = max(pl.pin_pos(g)[1] for pl, g in downs) + 2 * GRID
+            for pl, g in downs:
+                self.flag_rows[f"{pl.res.ref}.{g}"] = line
+        self._fit_sheet()
+
+    def _stand(self, pl: Placed, up: str, down: str) -> bool:
+        """Stand a two-pin part upright, ``up`` on top and ``down`` below."""
+        from .geometry import ORIENTS
+        for o in [pl.orient] + [o for o in ORIENTS if o != pl.orient]:
+            pl.orient = o
+            if pl.pin_dir(up) == (0, -1) and pl.pin_dir(down) == (0, 1):
+                return True
+        return False
+
+    def _fit_sheet(self) -> None:
+        """A bigger sheet if moving things down has run them off the bottom of this one."""
+        lay = self.layout
+        x0, y0, x1, y1 = lay.bounds()
+        ux0, uy0, ux1, uy1 = lay.sheet.usable
+        if x1 > ux1 or y1 > uy1:
+            lay.sheet = choose_sheet(x1 - ux0 + 10, y1 - uy0 + 10)
+
+    def _straighten_chains(self, reach: int = 10) -> None:
+        """Lay a run of parts out straight along the pin it leads from.
+
+        Lane's own arrangement of Memory Lapse puts C14, STABILITY and R3 on the row
+        of PT2399 pin 2, the pin the run feeds, and drops C11 and the LED+ pad onto
+        that row from below and above: a series run reads as one straight line, and
+        whatever hangs off it touches the line. Placed part by part where each was
+        drawn, the run stepped up and down a grid or six at every part.
+
+        From each pin of a chip or transistor (bigger parts first, since they are the
+        ones nothing moves), the run is followed outward the way the pin points: the
+        nearest two-pin part on the pin's net lying that way along that axis slides
+        sideways onto the pin's line, then the part after it, and so on. A two-pin
+        part or a pad hanging off a node of the run slides along its own axis until
+        its pin reaches the line. A move is kept only clear of every other part; a
+        part already straightened is never moved again, so two runs met head on
+        meet where the first one left the part. Rails drawn as flags are no run.
+        """
+        if not self.c.ours or not self.chains:
+            # a drawn sheet's arrangement is its designer's, and the sheet follows it;
+            # a stripboard reading's is ours, drawn to read the board by, and Lane's
+            # way of laying a run out is the better one. Measured on the 24 drawn
+            # sheets, straightening runs took them off the drawing: 7 in 100 more of
+            # the wiring off the drawn lines, 12 more jogs, 61 more corners.
+            return
+        lay = self.layout
+        on_net: dict[str, list[tuple[Placed, str]]] = {}
+        for pl in lay.placed:
+            for p in pl.pins():
+                net = self.pin_net(pl, p.number)
+                if net and not self._draw_as_flags(net):
+                    on_net.setdefault(net, []).append((pl, p.number))
+        done: set[int] = set()
+
+        def slide(pl: Placed, axis: int, delta: float) -> bool:
+            """Move ``pl`` by ``delta`` along ``axis`` if that lands it clear."""
+            if abs(delta) < 1e-3:
+                return True
+            if abs(delta) > reach * GRID + 1e-3 or id(pl) in done:
+                return False
+            old = pl.origin
+            pl.origin = (snap(old[0] + delta), old[1]) if axis == 0 else (old[0], snap(old[1] + delta))
+            if self._crowded(pl) and not self._make_room(pl, run):
+                pl.origin = old
+                return False
+            return True
+
+        anchors = sorted((pl for pl in lay.placed if len(pl.pins()) >= 3
+                          and pl.res.part.type != "port" and pl.res.part.type not in POTS),
+                         key=lambda pl: -len(pl.pins()))
+        for anchor in anchors:
+            done.add(id(anchor))
+            for p in anchor.pins():
+                net = self.pin_net(anchor, p.number)
+                if net not in on_net:
+                    continue
+                d = anchor.pin_dir(p.number)
+                hold = 1 if d[0] else 0                  # the coordinate a run along d keeps
+                at = anchor.pin_pos(p.number)
+                run = (anchor, d, hold, at[hold], done)
+                while net in on_net:
+                    ahead = []
+                    for pl, n in on_net[net]:
+                        far = self._through(pl, n)
+                        if id(pl) in done or far is None:
+                            continue
+                        a = pl.pin_pos(n)
+                        dist = (a[0] - at[0]) * d[0] + (a[1] - at[1]) * d[1]
+                        if dist < 0:
+                            continue
+                        b = pl.pin_pos(far)
+                        lies_along = (b[0] - a[0]) * d[0] + (b[1] - a[1]) * d[1] > 0 and abs(a[hold] - b[hold]) < 1e-3
+                        # a pot is turned to lie along the run; a two-pin part is drawn the way it is
+                        if lies_along or pl.res.part.type in POTS:
+                            ahead.append((dist, pl, n, far))
+                    if not ahead:
+                        break
+                    _, pl, n, far = min(ahead, key=lambda t: t[0])
+                    if pl.res.part.type in POTS and not self._lay_along(pl, n, far, d, at, hold):
+                        break
+                    if pl.res.part.type not in POTS and not slide(pl, hold, at[hold] - pl.pin_pos(n)[hold]):
+                        break
+                    done.add(id(pl))
+                    at = pl.pin_pos(far)
+                    net = self.pin_net(pl, far)
+                    # what hangs off this node comes to the line
+                    for hp, hn in on_net.get(net, []):
+                        if id(hp) in done or hp is pl or len(hp.pins()) > 2:
+                            continue
+                        if self._hang(hp, hn, at, hold, run):
+                            done.add(id(hp))
+
+    def _make_room(self, pl: Placed, run, most: int = 12) -> bool:
+        """Push what crowds a part landing on a run's line out of the way, by whole blocks.
+
+        To put C14 on PT2399 pin 2's row Lane moved the LM386 and the filter switch
+        below it down eight grid together — the input stage and the filter, the parts
+        in the way and what they are wired to, kept just as they were. So a block that
+        crowds the part, and every block wired to it, shift away from the line as one,
+        the least distance that clears. Only blocks wholly past the line and wholly
+        on the run's side of the chip it leads from may go: what straddles the line
+        is the run's own, and what lies across the chip is another stage. Their pads
+        go with them. Without blocks in the reading nothing is pushed.
+        """
+        lay = self.layout
+        anchor, d, hold, line, done = run
+        along = 1 - hold
+        blocks = {b.name: set(b.parts) for b in self.c.blocks}
+        if not blocks:
+            return False
+        block_of = {ref: name for name, refs in blocks.items() for ref in refs}
+        ab = anchor.box()
+
+        def past(o: Placed) -> bool:
+            x0, y0, x1, y1 = o.extent()
+            lo, hi = (x0, x1) if hold == 0 else (y0, y1)
+            beyond = lo > line if side > 0 else hi < line
+            a0, a1 = (x0, x1) if along == 0 else (y0, y1)
+            behind = a1 < ab[along] if d[along] < 0 else a0 > ab[along + 2]
+            return beyond and behind
+
+        def members(name: str) -> list[Placed]:
+            return [o for o in lay.placed if o.res.ref in blocks[name] and o is not pl]
+
+        def mostly_past(ms: list[Placed]) -> bool:
+            """A block wired to the one in the way comes with it if its middle is past the
+            line: the LM386 stage reaches above PT2399 pin 2's row by its supply pins
+            and R2, and Lane moved it down with the filter all the same."""
+            mid = sum((o.box()[hold] + o.box()[hold + 2]) / 2 for o in ms) / len(ms)
+            return (mid > line if side > 0 else mid < line) and all(
+                (o.extent()[along + 2] < ab[along]) if d[along] < 0 else (o.extent()[along] > ab[along + 2])
+                for o in ms)
+
+        grown = _grow(pl.box(), GRID)
+        crowd = [o for o in lay.placed if o is not pl and _area(o.box()) and _overlap(grown, o.box())]
+        names = {block_of.get(o.res.ref) for o in crowd}
+        # pushed away from the line, on the side the crowd stands (the part itself is on it)
+        mid = sum((o.box()[hold] + o.box()[hold + 2]) / 2 for o in crowd) / max(len(crowd), 1)
+        side = 1 if mid >= line else -1
+        if not crowd or None in names:
+            return False
+        moving: set[str] = set()
+        todo = list(names)
+        while todo:
+            name = todo.pop()
+            if name in moving:
+                continue
+            ms = members(name)
+            if not ms or any(id(o) in done for o in ms) or not mostly_past(ms):
+                return False
+            moving.add(name)
+            nets = {self.pin_net(o, q.number) for o in ms for q in o.pins()} - {None}
+            nets = {n for n in nets if not self._draw_as_flags(n)}
+            for other, refs in blocks.items():
+                if other in moving:
+                    continue
+                os_ = members(other)
+                if os_ and mostly_past(os_) and not any(id(o) in done for o in os_) and \
+                        any(self.pin_net(o, q.number) in nets for o in os_ for q in o.pins()):
+                    todo.append(other)
+        group = [o for name in moving for o in members(name)]
+        nets = {self.pin_net(o, q.number) for o in group for q in o.pins()} - {None}
+        group += [o for o in lay.placed if o.res.part.type == "port" and o not in group and past(o)
+                  and any(self.pin_net(o, q.number) in nets for q in o.pins())]
+        olds = [(o, o.origin) for o in group]
+        rest = [o for o in lay.placed if o not in group]
+        for k in range(1, most + 1):
+            for o, old in olds:
+                o.origin = (snap(old[0] + side * k * GRID), old[1]) if hold == 0 \
+                    else (old[0], snap(old[1] + side * k * GRID))
+            if not self._crowded(pl) and not any(lay.conflicts(o, rest) for o in group):
+                return True
+        for o, old in olds:
+            o.origin = old
+        return False
+
+    def _crowded(self, pl: Placed) -> bool:
+        """Would ``pl`` overlap another part, or stand with no grid of daylight to one?
+
+        A run straightened onto a line it shares with other parts is no better for it
+        if it lands nose to tail with them: C14 brought onto PT2399 pin 2's row stood
+        on C6's value."""
+        lay = self.layout
+        others = [o for o in lay.placed if o is not pl]
+        if lay.conflicts(pl, others):
+            return True
+        box = pl.box()
+        return any(_area(o.box()) and _overlap(_grow(box, GRID), o.box()) for o in others)
+
+    def _hang(self, hp: Placed, hn: str, at, hold: int, run) -> bool:
+        """Bring a part hanging off a node of a run to the run's line.
+
+        It comes across the run, its pin ``hn`` on the line where it already crosses
+        it. A part going to a rail drawn as flags hangs the way the rail's flag stands
+        — a decoupling cap below a run with its ground under it, as Lane hung C11 —
+        so it is turned that way if it was drawn the other; anything else keeps its
+        turn and slides along its own axis until its pin reaches the line."""
+        from .geometry import ORIENTS
+        old_o, old_origin = hp.orient, hp.origin
+        other = next((q.number for q in hp.pins() if q.number != hn), None)
+        rail = self.pin_net(hp, other) if other else None
+        want = None
+        if rail and self._draw_as_flags(rail):
+            sym, _ = self._flag_symbol(rail)
+            fp = sym.pins_for(1)[0]
+            want = tuple(int(round(v)) for v in apply(Orient(0, None).m, -fp.outward()[0], -fp.outward()[1]))
+        if want is not None and want[hold] != 0:
+            turns = [old_o] + [o for o in ORIENTS if o.mirror is None and o != old_o]
+        else:
+            turns = [old_o]
+        hp.orient = old_o
+        was = hp.pin_pos(hn)
+        for o in turns:
+            hp.orient, hp.origin = o, old_origin
+            out = hp.pin_dir(hn)
+            if out[hold] == 0:
+                continue                              # lies along the run, not across it
+            if want is not None and want[hold] != 0 and hp.pin_dir(other) != want:
+                continue                              # its rail end the wrong way up
+            now = hp.pin_pos(hn)                      # keep where it crosses the run
+            hp.origin = (snap(old_origin[0] + was[0] - now[0]), snap(old_origin[1] + was[1] - now[1]))
+            tip = hp.pin_pos(hn)
+            delta = at[hold] - tip[hold]
+            if abs(delta) > 10 * GRID + 1e-3:
+                continue                              # too far off to be this run's
+            if delta * out[hold] < 0:
+                # the line is behind the pin: it crosses to the side its pin faces the
+                # line from, when its other end then points where it should anyway
+                # (C11 drawn above the row, + up; hung below it, + up to meet it)
+                if want is None or want[hold] == 0:
+                    continue
+                body = hp.pin_pos(other)[hold] - tip[hold]       # from the pin to its tail
+                delta = at[hold] - tip[hold]
+                if body * out[hold] > 0:
+                    continue
+            hp.origin = (snap(hp.origin[0] + delta), hp.origin[1]) if hold == 0 \
+                else (hp.origin[0], snap(hp.origin[1] + delta))
+            # where it crosses first; failing that a few grid along the run, which is
+            # where Lane found C11 room, between C14 and STABILITY
+            base = hp.origin
+            for step in (0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6):
+                hp.origin = (snap(base[0] + step * GRID), base[1]) if hold == 1 \
+                    else (base[0], snap(base[1] + step * GRID))
+                if not self._crowded(hp):
+                    return True
+            hp.origin = base
+            if self._make_room(hp, run):
+                return True
+        hp.orient, hp.origin = old_o, old_origin
+        return False
+
+    def _through(self, pl: Placed, n: str) -> str | None:
+        """The pin a run entering ``pl`` at pin ``n`` leaves by, if it can pass through.
+
+        A two-pin part passes a run from one end to the other. So does a pot entered
+        at an end: STABILITY in Memory Lapse is a rheostat in series, the run going in
+        at one end and out at the other, the wiper strapped to one of them."""
+        if pl.res.part.type == "port":
+            return None
+        if len(pl.pins()) == 2:
+            return next(q.number for q in pl.pins() if q.number != n)
+        if pl.res.part.type in POTS:
+            ends = {pl.pinmap.get("ccw"), pl.pinmap.get("cw")}
+            if n in ends and None not in ends:
+                return next(e for e in ends if e != n)
+        return None
+
+    def _lay_along(self, pl: Placed, n: str, far: str, d, at, hold: int) -> bool:
+        """Turn a pot so its ends lie along a run and set its entering end on the line.
+
+        Of the turns that put ``far`` straight on from ``n`` the way the run goes, the
+        one with the wiper standing up (or to the left, on a run going up or down) is
+        what Lane drew; the pot keeps the end the run enters by where it was along the
+        run, and comes across onto its line."""
+        from .geometry import ORIENTS
+        old_o, old_origin = pl.orient, pl.origin
+        wiper = pl.pinmap.get("wiper")
+        best = None
+        for o in ORIENTS:
+            pl.orient = o
+            a, b = pl.pin_pos(n), pl.pin_pos(far)
+            if (b[0] - a[0]) * d[0] + (b[1] - a[1]) * d[1] <= 0 or abs(a[hold] - b[hold]) > 1e-3:
+                continue
+            w = pl.pin_pos(wiper) if wiper else a
+            up = (w[1] - a[1]) < 0 if hold == 1 else (w[0] - a[0]) < 0
+            key = (not up, o.mirror is not None, o != old_o)
+            if best is None or key < best[0]:
+                best = (key, o)
+        if best is None:
+            pl.orient = old_o
+            return False
+        # keep the entering end where it was along the run, bring it onto the line
+        pl.orient = old_o
+        entry = pl.pin_pos(n)
+        pl.orient = best[1]
+        now = pl.pin_pos(n)
+        shift = [entry[0] - now[0], entry[1] - now[1]]
+        shift[hold] = at[hold] - now[hold]
+        pl.origin = (snap(pl.origin[0] + shift[0]), snap(pl.origin[1] + shift[1]))
+        if self._crowded(pl):
+            pl.orient, pl.origin = old_o, old_origin
+            return False
+        return True
+
     def _drawn(self):
         """Each signal net's drawn wires (source pixels), or None with no drawing to hand."""
         if not hasattr(self, "_drawn_cache"):
@@ -650,11 +1165,12 @@ class Builder:
 
         A reading from a stripboard has no such drawing: its positions are a schematic
         drawn for it, and its image is the board, whose strips are not wires (verify
-        checks it against the board instead, for the same reason). And what the trace
+        checks it against the board instead, for the same reason). Nor has its designer
+        version (``"arrangement": "ours"``), drawn the same way with the board left off. And what the trace
         gives the builder is how it looks, never what it connects, so a trace that
         fails leaves the sheet laid out as it was before there were traces at all.
         """
-        if self.c.board:
+        if self.c.ours:
             return None
         try:
             return read(self.c)
@@ -900,8 +1416,12 @@ class Builder:
         sym, _ = self._flag_symbol(net)
         pin = sym.pins_for(1)[0]
         up = tuple(int(round(v)) for v in apply(Orient(0, None).m, -pin.outward()[0], -pin.outward()[1]))
-        lead: list[Terminal] = []
-        follow: list[Terminal] = []
+        # on the power row a rail's node is one flag, on the pin Lane hangs it from, and
+        # the row's other pins of that rail wire to it along the row
+        row = self.power_nodes.get(net, {})
+        lead: list[Terminal] = [t for t in ts if row.get(t.owner) == "lead"]
+        follow: list[Terminal] = [t for t in ts if row.get(t.owner) == "follow"]
+        ts = [t for t in ts if t.owner not in row]
         for t in sorted(ts, key=lambda t: (t.out != up, t.pos[1], t.pos[0])):
             (follow if any(math.dist(t.pos, u.pos) <= SHARE_MM for u in lead) else lead).append(t)
         return lead, follow
@@ -1172,6 +1692,10 @@ def _flag_box(sym: LibSymbol, origin, o: Orient, value: str = ""):
     return box
 
 
+def _union_all(boxes):
+    return (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
+
+
 def _union(a, b):
     return (min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]))
 
@@ -1266,8 +1790,33 @@ def build(circuit_path: Path, out_dir: Path, profile: str = "tht", name: str | N
     circuit = load(circuit_path)
     prof = load_profile(profile)
     project = safe_name(name or circuit.name)
-    b = Builder(circuit, prof, project, spacing=spacing)
-    result = b.run(out_dir)
+    if not circuit.ours:
+        b = Builder(circuit, prof, project, spacing=spacing)
+        result = b.run(out_dir)
+        write_build_json(b, result, circuit_path, out_dir)
+        return result
+    # A stripboard reading's arrangement is ours, and straightening its runs (Lane's
+    # Memory Lapse) is not a win on every sheet: a run put straight can leave the
+    # part's other end a grid off what it joins. So the sheet is laid out both ways
+    # and the tidier kept. Each is a whole build; the loser is thrown away.
+    import shutil
+    import tempfile
+    tries = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for chains in (True, False):
+            where = Path(tmp) / ("runs" if chains else "plain")
+            b = Builder(load(circuit_path), prof, project, spacing=spacing, chains=chains)
+            result = b.run(where)
+            tries.append((b.untidiness(), not chains, b, result, where))
+        _, _, b, result, where = min(tries, key=lambda t: t[:2])
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for f in where.iterdir():
+            dest = out_dir / f.name
+            if f.is_dir():
+                shutil.copytree(f, dest, dirs_exist_ok=True)
+            else:
+                shutil.copy2(f, dest)
+    result.sch, result.pro = out_dir / result.sch.name, out_dir / result.pro.name
     write_build_json(b, result, circuit_path, out_dir)
     return result
 

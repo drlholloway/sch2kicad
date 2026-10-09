@@ -172,8 +172,27 @@ typo too (Rattle Crow "12 cuts" with 11 drawn): count, and say so.
 When the user picks the designer's version over the layout (Lane usually does),
 keep both: `gen.py` writes the as-drawn `circuit.json` with `"board"`, and
 `gen.py final` applies the choices on top and writes `final/circuit.json` with no
-`"board"` (it no longer matches the stripboard). Build `final/` as the project to
-use, and say in its notes which choices were made and what the layout had.
+`"board"` (it no longer matches the stripboard) and with `"arrangement": "ours"`:
+its positions are still the schematic drawn for the board, not pixels of a drawing,
+so nothing traces its image. Build `final/` as the project to use, and say in its
+notes which choices were made and what the layout had.
+
+A schematic drawn for a board is laid out the way Lane arranged Memory Lapse, where
+a drawn sheet follows its drawing instead:
+
+- **The supply** comes in on the house `Conn_01x02_Socket_Power` (value POWER, pin 1
+  the supply ahead of the reverse-polarity diode, pin 2 ground) and is laid out as
+  one row across the top left corner: socket, diode, regulator, each node's caps
+  hanging below with their grounds level, one flag per rail node. Everything else
+  moves down as a whole if the row needs the room. This rides on the profile's
+  `power_header`, which a drawn sheet gets too; the row is for boards only.
+- **Runs lie straight along the pin they feed**: from each chip or transistor pin,
+  the two-pin parts (and a pot entered at an end, turned to lie along) leading out
+  of it come onto the pin's line, and what hangs off a node of the run (a
+  decoupling cap, a pad) comes to it from the side its rail flag stands. Blocks in
+  the way are pushed off the line whole. Each board sheet is built with and without
+  this and the tidier kept: a straightened run can leave a part's other end a grid
+  off what it joins.
 
 A vactrol drawn as an LED and an LDR is one part on the board: an `ic` with
 `"lib_id": "Isolator:VTL5C"`, `"footprint": "OptoDevice:PerkinElmer_VTL5C"`,

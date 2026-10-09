@@ -24,6 +24,7 @@ RED = (200, 0, 0, 1)
 GREY = (90, 90, 90, 1)
 OPEN_PINS = {"open_emitter", "open_collector"}
 SHARE_MM = 7.62      # two flags of one rail closer than this are one node drawn twice
+BASELINE_MM = 5.08   # ...unless they stand level on a baseline, two flag widths apart or more
 
 
 @dataclass
@@ -425,7 +426,8 @@ class Builder:
                 continue
             dirs = [pl.pin_dir(p.number) for p in pl.pins()]
             inst.field_pos = field_positions(inst, pl.box(), dirs, names,
-                                             blocked=parts_boxes + self.text_boxes)
+                                             blocked=parts_boxes + self.text_boxes,
+                                             others=[o.box() for o in lay.placed if o is not pl and _area(o.box())])
             for k, at in inst.field_pos.items():   # flags and wires keep off this text
                 self.text_boxes.append(_text_box(at, _field_text(inst, k)))
 
@@ -713,7 +715,7 @@ class Builder:
                 n += 1                                   # reads as someone else's
         return n
 
-    def _power_row(self, gap: int = 4) -> None:
+    def _power_row(self, gap: int = 4, band: int = 5) -> None:
         """Lay the supply out as one row in the top left, the way Lane draws it.
 
         Lane's Memory Lapse: the POWER socket, D1, then the 78L05 on one row across the
@@ -831,10 +833,13 @@ class Builder:
         dx, dy0 = snap(cx - gx0), snap(cy - gy0)     # one shift for all, or each rounds its own way
         for pl in group:
             pl.origin = (round(pl.origin[0] + dx, 4), round(pl.origin[1] + dy0, 4))
-        gb = _grow(_union_all([pl.extent() for pl in group]), 2 * GRID)
-        clash = [pl.extent() for pl in others if _overlap(gb, pl.extent())]
-        if clash:
-            dy = snap(gb[3] - min(e[1] for e in clash) + GRID)
+        # a band of its own across the top: Lane leaves about eleven millimetres clear
+        # under the supply before anything else starts, the Feedback block to its
+        # right included, where the row had been sharing its height
+        bottom = _union_all([pl.extent() for pl in group])[3] + band * GRID
+        top = min(pl.extent()[1] for pl in others) if others else bottom
+        if top < bottom:
+            dy = snap(bottom - top + GRID / 2)
             for pl in others:
                 pl.origin = (pl.origin[0], snap(pl.origin[1] + dy))
         # each rail node on the row: one flag, on the pin that hangs below it
@@ -1514,8 +1519,9 @@ class Builder:
                 return None
             if not over_text and any(_overlap(box, tb) for tb in self.text_boxes):
                 return None
-            if first and any(math.dist(tip, f) < SHARE_MM for f in self.flag_pins.get(net, [])):
-                return None
+            near = BASELINE_MM if t.owner in self.flag_rows else SHARE_MM
+            if first and any(math.dist(tip, f) < near - 1e-3 for f in self.flag_pins.get(net, [])):
+                return None             # (a row of level flags stands closer, on purpose)
             return (path, o, origin, box)
 
         def pt(p, d, k):
@@ -1548,8 +1554,12 @@ class Builder:
                 if (round(bd[0]), round(bd[1])) == t.out:
                     cands.append(([t.pos, pt(t.pos, t.out, s)], o))
         best = None
+        # the line a row of flags stands on comes first, over text if need be: the text
+        # moves afterwards, and a flag a grid lower would break the row
+        if row is not None and cands and len(cands[0][0]) == 2 and t.out == up_dir:
+            best = attempt(cands[0][0], cands[0][1], True)
         # a flag over a value is fixable — the fields move afterwards — so it beats no flag
-        for over_text in (False, True):
+        for over_text in (() if best else (False, True)):
             for path, o in cands:
                 best = attempt(path, o, over_text)
                 if best:
@@ -1680,6 +1690,12 @@ class Builder:
         follow: list[Terminal] = [t for t in ts if row.get(t.owner) == "follow"]
         ts = [t for t in ts if t.owner not in row]
         for t in sorted(ts, key=lambda t: (t.out != up, t.pos[1], t.pos[0])):
+            # a flag on a row of level flags is one of a baseline on purpose (C3's and
+            # C2's grounds under PT2399), not one node drawn twice: it keeps its own
+            if t.owner in self.flag_rows and t.out == up and \
+                    all(math.dist(t.pos, u.pos) >= BASELINE_MM for u in lead):
+                lead.append(t)
+                continue
             (follow if any(math.dist(t.pos, u.pos) <= SHARE_MM for u in lead) else lead).append(t)
         return lead, follow
 
@@ -1819,7 +1835,8 @@ class Builder:
             if not any(_overlap(m, b) for m in mine[id(inst)] for b in around):
                 continue
             dirs = [pl.pin_dir(p.number) for p in pl.pins()]
-            inst.field_pos = field_positions(inst, pl.box(), dirs, names, blocked=around)
+            inst.field_pos = field_positions(inst, pl.box(), dirs, names, blocked=around,
+                                             others=[p2.box() for p2, _, _ in specs if p2 is not pl and _area(p2.box())])
             mine[id(inst)] = _inst_boxes(inst)
         self.text_boxes = [b for v in mine.values() for b in v]
 

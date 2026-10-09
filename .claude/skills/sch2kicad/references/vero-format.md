@@ -184,7 +184,7 @@ a drawn sheet follows its drawing instead:
   the supply ahead of the reverse-polarity diode, pin 2 ground) and is laid out as
   one row across the top left corner: socket, diode, regulator, each node's caps
   hanging below with their grounds level, one flag per rail node. Everything else
-  moves down as a whole if the row needs the room. This rides on the profile's
+  moves down as a whole so the row has a band of its own, five grid clear under it. This rides on the profile's
   `power_header`, which a drawn sheet gets too; the row is for boards only.
 - **Runs lie straight along the pin they feed**: from each chip or transistor pin,
   the two-pin parts (and a pot entered at an end, turned to lie along) leading out

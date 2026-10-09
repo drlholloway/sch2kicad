@@ -415,8 +415,13 @@ def test_no_rail_is_flagged_twice_in_one_place(tmp_path, circuit):
     missed, where the pins are farther apart and a dog-leg brings their flags
     together — twelve pairs across the samples, the Gargler's VR pair 2.54 mm apart.
     """
-    from sch2kicad.build import SHARE_MM
+    from sch2kicad.build import BASELINE_MM, SHARE_MM
     fl = _flags(sexpr.parse(build(circuit, tmp_path / "board").sch.read_text()))
+
+    def baseline(a, b) -> bool:
+        """Level and two flag widths apart: a row of grounds, as Chuck D. Bones and
+        Lane both draw them (Lane's C3 and C2 under PT2399, ~5 mm apart)."""
+        return abs(a[2] - b[2]) < 1e-3 and math.dist(a[1:3], b[1:3]) >= BASELINE_MM - 1e-3
     close = [(a, b) for i, a in enumerate(fl) for b in fl[i + 1:]
-             if a[0] == b[0] and math.dist(a[1:3], b[1:3]) < SHARE_MM]
+             if a[0] == b[0] and math.dist(a[1:3], b[1:3]) < SHARE_MM - 1e-3 and not baseline(a, b)]
     assert close == []

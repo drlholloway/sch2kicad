@@ -8,6 +8,7 @@ disk is exactly what KiCad would have written.
 from __future__ import annotations
 
 import json
+import math
 import uuid as uuidlib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -294,7 +295,8 @@ def _overlap_area(a, b) -> float:
 
 def field_positions(inst: SymbolInstance, box: tuple[float, float, float, float],
                     pin_dirs: list[tuple[int, int]], names: list[str],
-                    blocked: list[tuple[float, float, float, float]] = ()) -> dict[str, tuple[float, float]]:
+                    blocked: list[tuple[float, float, float, float]] = (),
+                    others: list[tuple[float, float, float, float]] = ()) -> dict[str, tuple[float, float]]:
     """Stack Reference / Value / Label beside the body, clear of pins and of everything else.
 
     Sides without pins come first, then the rest; on each side the stack slides
@@ -302,6 +304,11 @@ def field_positions(inst: SymbolInstance, box: tuple[float, float, float, float]
     ``blocked`` (other symbols' bodies and pin lines, text already placed). When
     every spot is taken, the one that covers the least wins: a value half over a
     wire still reads, and a value is worth more than a tidy rule.
+
+    A clear spot nearer one of the ``others`` (the other parts' bodies) than this
+    part's own is taken only when there is no clear spot of its own: Memory Lapse's
+    R8, crowded out from beside itself, stood its name under R11, beside R11's own.
+    A name across a wire reads worse still, so a clear spot beats a covered one.
     """
     x0, y0, x1, y1 = box
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
@@ -332,22 +339,34 @@ def field_positions(inst: SymbolInstance, box: tuple[float, float, float, float]
         return sum(_overlap_area(text_box(pos[k], t), b)
                    for k, t in zip(names, texts) for b in blocked)
 
+    def gap(p, b) -> float:
+        return math.hypot(max(b[0] - p[0], 0, p[0] - b[2]), max(b[1] - p[1], 0, p[1] - b[3]))
+
+    def ours(pos: dict) -> bool:
+        """Does every line of the stack stand nearer this part than any other?"""
+        return all(gap(at, box) <= min((gap(at, o) for o in others), default=1e9) + 0.5
+                   for at in pos.values())
+
     order = [(1, 0), (-1, 0), (0, -1), (0, 1)]
     free = [s for s in order if s not in used]
     first = at_side(free[0], 0.0, 0.0) if free else at_side((1, 0), 0.0, -2.2 - hy)
     if not blocked:
         return first
-    best, worst = first, spoilt(first)
+    best, worst = first, (spoilt(first) > 0, not ours(first), spoilt(first))
     for sides in (free, [s for s in order if s in used]):
         for push in _PUSHES:
             for slide in _SHIFTS:
                 for side in sides:
                     pos = at_side(side, push, slide)
                     hidden = spoilt(pos)
-                    if hidden <= 0:
+                    own = ours(pos)
+                    if hidden <= 0 and own:
                         return pos
-                    if hidden < worst:     # nowhere is clear: covered least still reads best
-                        best, worst = pos, hidden
+                    # failing a clear spot of its own: a clear one (a wire through a
+                    # name is worse than a name a little nearer a neighbour), then its
+                    # own covered least, then whatever is covered least
+                    if (hidden > 0, not own, hidden) < worst:
+                        best, worst = pos, (hidden > 0, not own, hidden)
     return best
 
 

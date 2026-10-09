@@ -281,3 +281,31 @@ def test_side_by_side_parts_leave_room_for_their_names(tmp_path):
     b, placed = _memory_lapse(tmp_path, "room")
     ys = sorted((placed[r].box()[1] + placed[r].box()[3]) / 2 for r in ("R6", "R8", "R11"))
     assert ys[1] - ys[0] >= 5 * 1.27 - 1e-3 and ys[2] - ys[1] >= 5 * 1.27 - 1e-3
+
+
+def test_a_row_of_level_grounds_keeps_a_flag_each(tmp_path):
+    """C3's and C2's grounds, levelled under PT2399, stand 6.35 mm apart: inside the
+    distance at which two flags of a rail are taken for one node drawn twice, so C2's
+    was wired across to C3's in a loop, and then hung a grid lower. A row is a
+    baseline on purpose: each pin on it keeps its own flag, on the line."""
+    b, placed = _memory_lapse(tmp_path, "baseline")
+    tips = {}
+    for r in ("C3", "C2"):
+        pl = placed[r]
+        n = pl.pinmap["2"]
+        tips[r] = pl.pin_pos(n)
+        assert f"{r}.{n}" in b.flag_rows
+    line = b.flag_rows[f"C3.{placed['C3'].pinmap['2']}"]
+    flags = [s.at for s in b.w.symbols if s.lib.lib_id.endswith(":GND")]
+    for r, tip in tips.items():
+        assert any(abs(f[0] - tip[0]) < 1e-3 and abs(f[1] - line) < 1e-3 for f in flags), r
+
+
+@pytest.mark.parametrize("name", ["memory-lapse", "altered-states", "hellbender-cb-mod"])
+def test_every_name_stands_nearest_its_own_part(tmp_path, name):
+    """A name pushed out of the clear round its own part used to land wherever was
+    clear, beside a neighbour: Memory Lapse's R8 read as R11's. Every reference and
+    value now stands nearer its own body than any other's, and on nothing."""
+    b = Builder(load(SAMPLES / "circuits" / f"{name}.circuit.json"), load_profile("tht"), "names")
+    b.run(tmp_path)
+    assert b.text_clashes() == 0

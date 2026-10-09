@@ -24,9 +24,12 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .parts import OPAMPS, POTS, TWO_TERMINAL, canonical_pin
+from .parts import TWO_TERMINAL, canonical_pin
 
 SCHEMA = "sch2kicad/vero@1"
+
+# parts with pins that may be left open: a spare pin alone on its strip is not a misread
+_CHIPS = {"ic", "lm386", "opamp_single", "opamp_dual", "opamp_quad"}
 
 _HOLE = re.compile(r"^([A-Z]{1,2})(\d{1,3})$")
 
@@ -220,6 +223,8 @@ class Nets:
     pin_net: dict[tuple[str, str], str]     # (ref, pin) → net
     problems: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+    lone: set[str] = field(default_factory=set)     # nets that are one lead and nothing else
 
 
 def derive(b: Board) -> Nets:
@@ -282,6 +287,10 @@ def derive(b: Board) -> Nets:
     wires: dict[str, list[str]] = {}
     pin_net: dict[tuple[str, str], str] = {}
     taken: set[str] = set()
+    types = {p.ref: p.type for p in b.parts}
+    unused: dict[str, list[str]] = {}
+    notes: list[str] = []
+    lone: set[str] = set()
     for members in groups.values():
         pins = sorted(f"{k[1]}.{k[2]}" for k in members if isinstance(k, tuple) and k[0] == "pin")
         ws = sorted(k[1] for k in members if isinstance(k, tuple) and k[0] == "wire")
@@ -314,9 +323,20 @@ def derive(b: Board) -> Nets:
             if isinstance(k, tuple) and k[0] == "pin":
                 pin_net[(k[1], k[2])] = name
         if len(pins) == 1 and not ws and not explicit:
-            warns.append(f"{pins[0]} is alone on its strip ({', '.join(h.name for h in hs)}): "
-                         f"a lead that connects to nothing — misread hole, or a missing link?")
-    nets = Nets(names=names, holes=holes, wires=wires, pin_net=pin_net, problems=probs, warnings=warns)
+            lone.add(name)
+            ref, pin = pins[0].split(".", 1)
+            if types.get(ref) in _CHIPS:
+                unused.setdefault(ref, []).append(pin)
+            else:
+                warns.append(f"{pins[0]} is alone on its strip ({', '.join(h.name for h in hs)}): "
+                             f"a lead that connects to nothing — misread hole, or a missing link?")
+    # a chip's spare pins are normal; say them once, so a missing link still stands out
+    for ref, pins in unused.items():
+        nums = sorted(pins, key=lambda x: (len(x), x))
+        notes.append(f"{ref} pins {', '.join(nums)} are alone on their strips: unused "
+                     f"(check the datasheet lets them float, and the schematic marks them NC)")
+    nets = Nets(names=names, holes=holes, wires=wires, pin_net=pin_net, problems=probs, warnings=warns,
+                notes=notes, lone=lone)
     st = b.stated
     if "cuts" in st and int(st["cuts"]) != len(b.cuts):
         probs.append(f"the layout says {st['cuts']} cuts; the reading has {len(b.cuts)}")
@@ -397,7 +417,7 @@ def _red(px) -> bool:
     """A cut's red, also seen through a translucent part drawn over it. A translucent
     red body over bare copper is orange-red, not this."""
     r, g, b = int(px[0]), int(px[1]), int(px[2])
-    return r > 180 and g < 60 and b < 60
+    return r > 150 and g < 60 and b < 60 and r - g > 110
 
 
 def _dark(px) -> bool:
@@ -440,11 +460,12 @@ def look(b: Board) -> Seen:
         for c in range(1, b.cols + 1):
             h = Hole(r, c)
             cx, cy = g.at(h)
-            inner = ring(cx, cy, 0.28 * p)
+            # a link drawn across the cut darkens part of the ring: leave that out
+            inner = [q for q in ring(cx, cy, 0.28 * p) if not _dark(q)]
             centre = px(cx, cy)
-            if not inner or centre is None or _red(centre):
+            if len(inner) < 8 or centre is None or _red(centre):
                 continue
-            sides = [px(cx + s * 0.62 * p * along[0], cy + s * 0.62 * p * along[1]) for s in (-1, 1)]
+            sides = [px(cx + s * 0.5 * p * along[0], cy + s * 0.5 * p * along[1]) for s in (-1, 1)]
             body = all(q is not None and _red(q) for q in sides)
             if sum(_red(q) for q in inner) / len(inner) > 0.6 and not body:
                 seen.cuts.add(h)
@@ -718,9 +739,11 @@ def skeleton(b: Board, nets: Nets) -> dict:
         base = {k: v for k, v in p.data.items() if k not in ("ref", "type")}
 
         def net(pin):
-            if pin in p.nc:
+            n = nets.pin_net.get((p.ref, pin))
+            if pin in p.nc or n is None:
                 return "NC"
-            return nets.pin_net.get((p.ref, pin), "NC")
+            # alone on its strip: connected to nothing, which a schematic draws as NC
+            return "NC" if n in nets.lone else n
 
         if p.type in _DIP:
             dip = _DIP[p.type]
@@ -765,6 +788,8 @@ def report(b: Board, nets: Nets, seen: Seen) -> tuple[str, bool]:
         lines.append(f"  problem: {p}")
     for w in nets.warnings + image:
         lines.append(f"  warning: {w}")
+    for n in nets.notes:
+        lines.append(f"  note: {n}")
     ok = not nets.problems
     lines.append("BOARD OK" if ok and not image else ("BOARD OK, check the warnings" if ok else "BOARD HAS PROBLEMS"))
     return "\n".join(lines), ok

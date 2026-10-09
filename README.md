@@ -300,6 +300,20 @@ The first is Aleph Null's **Moka Pot Fuzz** from Dirtbox Layouts: 41 parts on a
   shows the two places where the layout departs from it: a 1M input pulldown
   added, and a 100nF supply decoupler left out.
 
+The second is Seppuku Fx's **Sub Octave Synth**, a CD4046 PLL on a 16x16 board.
+Its schematic is PedalPCB's Underminer, and the layout links to it.
+- The Underminer build doc's parts list gives the refs and values, and verify
+  checks them as it does for any PedalPCB conversion.
+- It built READY first time, with all 83 board pins agreeing and every
+  Underminer connection matching.
+- The one disagreement is C4's polarity: the layout puts the 47uF's + on Q2's
+  collector, while the Underminer draws it toward the GLITCH switch.
+- It taught the image check two things:
+  - cut squares drawn under a chip's body are a darker red;
+  - a film cap's body over a hole is wider than a cut square.
+- A chip's spare pins (eight, on the CD4046) now come back as one note and as NC
+  in the skeleton, not eight warnings. A resistor lead alone on a strip still warns.
+
 ## Development
 
 ```sh

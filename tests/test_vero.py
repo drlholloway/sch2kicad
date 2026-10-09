@@ -247,3 +247,60 @@ def test_the_image_catches_a_misread_cut_or_link(plant, says):
     b.path = MOKA
     warns = compare_seen(b, look(b))
     assert any(says in w for w in warns), warns
+
+
+# ------------------------------------------------------------------ a board with a chip on it
+
+SUB = CIRCUITS / "sub-octave-synth.board.json"
+
+
+def test_the_sub_octave_schematic_matches_its_board():
+    c = load(CIRCUITS / "sub-octave-synth.circuit.json")
+    chk = check_circuit(c, c.board_path())
+    assert chk.ok, chk.problems + chk.diffs
+    assert chk.pins == 83
+
+
+def test_a_chips_spare_pins_are_one_note_and_nc_in_the_skeleton():
+    b = load_board(SUB)
+    nets = derive(b)
+    assert not any("IC1" in w for w in nets.warnings)
+    assert nets.notes == ["IC1 pins 1, 2, 3, 10, 11, 13, 14, 15 are alone on their strips: unused "
+                          "(check the datasheet lets them float, and the schematic marks them NC)"]
+    ic = next(p for p in skeleton(b, nets)["parts"] if p["ref"] == "IC1")
+    assert [k for k, n in ic["pins"].items() if n == "NC"] == ["1", "2", "3", "10", "11", "13", "14", "15"]
+
+
+def test_a_spare_chip_pin_is_a_note_but_a_lone_resistor_lead_still_warns():
+    b = _board(board={"rows": 4, "cols": 8}, cuts=["A4", "B4", "C4", "D4"], parts=[
+        {"ref": "IC1", "type": "opamp_dual", "pins": {"1": "A3", "2": "B3", "3": "C3", "4": "D3",
+                                                     "5": "D5", "6": "C5", "7": "B5", "8": "A5"}},
+        {"ref": "R1", "type": "resistor", "pins": {"1": "A1", "2": "C1"}},
+        {"ref": "R2", "type": "resistor", "pins": {"1": "A8", "2": "D8"}}])
+    nets = derive(b)
+    # B3 (pin 2) has nothing else on its strip: a spare pin, said once
+    assert any(n.startswith("IC1 pins 2, 4, 6, 7 are") for n in nets.notes), nets.notes
+    assert not any("IC1" in w for w in nets.warnings)
+    assert not any("R" in w for w in nets.warnings)
+    b = _board(board={"rows": 4, "cols": 8}, parts=[
+        {"ref": "R1", "type": "resistor", "pins": {"1": "A1", "2": "C1"}},
+        {"ref": "R2", "type": "resistor", "pins": {"1": "A8", "2": "D8"}}])
+    assert [w.split(" is alone")[0] for w in derive(b).warnings] == ["R1.2", "R2.2"]
+
+
+needs_sub_image = pytest.mark.skipif(not (CIRCUITS.parent / "Seppuku Sub Octave Synth.png").exists(),
+                                     reason="the layout image is third-party and not in the repo")
+
+
+@needs_sub_image
+def test_cuts_under_a_chip_are_seen_and_a_capacitor_is_not_a_cut():
+    b = load_board(SUB)
+    seen = look(b)
+    # the seven cuts down the middle of the CD4046, dark red under its body
+    assert {f"{r}9" for r in "GHIJKLM"} <= {h.name for h in seen.cuts}
+    # O5 is under the 470nF's red body and its white lettering, not a cut
+    assert "O5" not in {h.name for h in seen.cuts}
+    assert compare_seen(b, seen) == [
+        "cut at B6 is in the reading, but no cut mark shows there (hidden under a part, or a misread hole)",
+        "cut at H6 is in the reading, but no cut mark shows there (hidden under a part, or a misread hole)",
+        "link F8-K8 is in the reading, but no black bar shows at one end (under a part, or a misread end)"]

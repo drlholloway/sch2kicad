@@ -20,7 +20,9 @@ So a vero conversion is two files:
    - **problems**: a lead or link in a cut hole, cut/link counts that differ from
      the ones the layout prints ("17x16, 19 cuts, 8 links"), two jacks on one strip;
    - **warnings**: a lead alone on its strip, two leads in one hole, and where the
-     image disagrees with the reading about cuts and links.
+     image disagrees with the reading about cuts and links;
+   - **notes**: a chip's spare pins, alone on their strips. These are said once,
+     and the skeleton marks them NC.
 
    It also writes `board.overlay.png`: every part's leads joined by a coloured line
    and labelled, cuts read as blue crosses, links as green lines, wires as magenta
@@ -96,6 +98,11 @@ Where the layout departs from the schematic (an added pulldown, a decoupler left
 out), the board is what gets built, so keep the board's version and say so in
 `notes`.
 
+When the schematic comes from a build doc with a parts list (PedalPCB), ingest
+the doc as usual. Copy its `bom.json` rows into circuit.json's `"bom"`, so verify
+checks every value. Parts that live off the board (the LED's resistor at the
+footswitch) go in `bom_accept`.
+
 ## Reading the Dirtbox style
 
 - Refs are printed only for transistors, diodes and ICs. Take the rest from the
@@ -108,7 +115,9 @@ out), the board is what gets built, so keep the board's version and say so in
 - Letters on the transistor body (`C B E`, `D G S`) sit on its holes.
 - A film cap's red box hides its lead holes. The leads are at the box's two ends,
   centred across it.
-- An electrolytic's grey band is its negative side.
+- An electrolytic's grey (or green) band is its negative side. Check each one
+  against the schematic, and report any disagreement to the user: the Sub Octave
+  layout and the Underminer schematic disagree about C4.
 - A diode's band is the cathode.
 - **Translucent parts** (a cap lying over a cut, the Moka Pot's zener over M4) show what is under
   them. A darker red square seen through one is a cut.
@@ -121,7 +130,8 @@ It finds the hole grid from the copper, then looks for:
 - **cuts**: a pure red square round a hole that still shows;
 - **links**: a black bar between holes, across the strips.
 
-A cut drawn under a part's body or text can't be seen, and neither can a link
+A cut under a chip's body shows a darker red, and is seen. A cut under a
+translucent resistor or a part's lettering can't be seen, and neither can a link
 passing under a part. Those come back as "in the reading, but not seen" warnings.
 Look, then say so in the report. A slanting link, or a link along a strip, is not
 checked.

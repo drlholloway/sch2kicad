@@ -16,6 +16,7 @@ to be exact and then checks the result with KiCad itself.
 image / PDF ──ingest──▶ tiles + OCR + junction dots ──Claude reads──▶ circuit.json
 circuit.json ──build──▶ .kicad_sch/.kicad_pro ──verify (kicad-cli)──▶ READY / NOT READY
 circuit.json ──blocks──▶ one schematic per block
+vero layout ──Claude reads──▶ board.json ──vero──▶ nets + skeleton ──Claude draws──▶ circuit.json
 ```
 
 ## What "verified" means
@@ -56,6 +57,8 @@ sch2kicad build circuit.json -o out -p tht    # tht (default) or smd; builds and
 sch2kicad verify out/Name.kicad_sch       # re-check a built schematic
 sch2kicad compare out/Name.kicad_sch --open   # original and KiCad side by side
 sch2kicad blocks circuit.json -o out/blocks   # each block as its own schematic
+sch2kicad vero board.json                 # a stripboard reading: its nets, checked against the image
+sch2kicad vero board.json --skeleton circuit.json   # every part and net, to draw the schematic from
 sch2kicad pinout 2N5089 2N2222 J201       # lead-order table
 sch2kicad profiles
 ```
@@ -266,6 +269,36 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
   with the **middle** throw, and a symbol that agrees puts the part where the
   drawing puts it. Getting that wrong left a pin with no room to route and cost
   a net label; fixing the fidelity fixed the layout, with no pin moved.
+
+### Stripboard layouts
+
+A vero layout is a second kind of source, and it is the reverse of a schematic.
+Every connection is there, but there's no drawing of the circuit. Claude reads
+the board hole by hole into `board.json`: each lead's hole, the cuts, the links,
+and the off-board wires. Nothing on the board is traced by eye. `sch2kicad vero`
+works the nets out of the strips, then reads the layout image again for the two
+things a misread board turns on:
+- **cuts**: the red squares;
+- **links**: the black bars.
+
+It also checks the counts the layout prints under the board. Claude then draws
+the schematic from the skeleton the board gives, and verify proves the schematic
+connects exactly what the board connects. That check is exact, not a heuristic,
+so any difference is a problem rather than a warning.
+
+The first is Aleph Null's **Moka Pot Fuzz** from Dirtbox Layouts: 41 parts on a
+17x16 board.
+- It built READY first time, and all 93 pins agree with the board.
+- The image check found the 19th cut the reading had missed: M4, under D2's
+  translucent body, the one the layout's "19 cuts" said was there. With it, Gain's
+  lug 1 goes to ground through the 4.7K instead of to Q1's source.
+- The layout labels two transistors in one column only as "Q4, Q5". The circuit
+  settled which is which: a PNP's emitter and an NPN's collector face the 10K to
+  the supply.
+- Afterwards, the designer's own schematic (linked from the layout's post) agreed
+  connection for connection, and the parts were renumbered to its refs. It also
+  shows the two places where the layout departs from it: a 1M input pulldown
+  added, and a 100nF supply decoupler left out.
 
 ## Development
 

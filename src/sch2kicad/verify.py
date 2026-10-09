@@ -37,6 +37,7 @@ class Report:
     components: int = 0
     nets: int = 0
     drawing: object | None = None      # trace.Crosscheck, when the source can be read again
+    board: object | None = None        # vero.BoardCheck, when the schematic was drawn from a stripboard
     render: Path | None = None
     compare: Path | None = None
 
@@ -44,7 +45,7 @@ class Report:
     def ok(self) -> bool:
         return (self.netlist_ok and not self.erc_errors and not self.footprint_problems
                 and not self.build_problems and not self.unconfirmed and not self.uncertain
-                and not self.bom_problems)
+                and not self.bom_problems and (self.board is None or self.board.ok))
 
     def text(self) -> str:
         def sect(title, items, mark):
@@ -63,6 +64,10 @@ class Report:
             state = "the reading agrees  OK" if not d.disagreements else f"{d.disagreements} disagree"
             lines.append(f"  drawing:    {d.checked} of {d.drawn} pins traced through "
                          f"{d.traced} conductors, {state}")
+        bd = self.board
+        if bd is not None:
+            state = "the schematic agrees  OK" if bd.ok else f"{len(bd.diffs) + len(bd.problems)} problems"
+            lines.append(f"  board:      {bd.pins} pins on the {bd.board} layout, {state}")
         lines += sect("netlist differences", self.netlist_diffs, "problem:")
         lines += sect("ERC errors", self.erc_errors, "problem:")
         lines += sect("footprints", self.footprint_problems, "problem:")
@@ -72,6 +77,9 @@ class Report:
         lines += sect("parts list (re-read the drawing; accept a real difference in bom_accept)",
                       self.bom_problems, "problem:")
         lines += sect("parts list", self.bom_warnings, "warning:")
+        if bd is not None:
+            lines += sect("the board reading (sch2kicad vero board.json)", bd.problems, "problem:")
+            lines += sect("the schematic connects differently from the board", bd.diffs, "problem:")
         if d is not None:
             lines += sect("the drawing wires it differently (re-read it; the netlist is what a board is)",
                           d.splits + d.merges + d.misnamed, "warning:")
@@ -468,11 +476,18 @@ def verify(sch: Path, build_json: Path | None = None, source_image: Path | None 
         rep.bom_rows, rep.bom_matched = chk.rows, chk.matched
         rep.bom_problems, rep.bom_warnings = chk.problems, chk.warnings
         rep.notes += chk.notes
+    circuit = None
     if meta.get("circuit"):
+        from .circuit import load as _load
+        circuit = _load(Path(meta["circuit"]))
+    if circuit is not None and circuit.board:
+        # drawn from a stripboard: the board is the source, and it is checked exactly
+        from .vero import check_circuit
+        rep.board = check_circuit(circuit, circuit.board_path())
+    elif circuit is not None:
         try:
-            from .circuit import load as _load
             from .trace import crosscheck_circuit
-            rep.drawing = crosscheck_circuit(_load(Path(meta["circuit"])))
+            rep.drawing = crosscheck_circuit(circuit)
         except Exception as e:      # reading the source again is a check, never the gate
             rep.notes.append(f"could not read the drawing again to check it: {e}")
     if meta.get("labelled_nets"):
@@ -484,7 +499,7 @@ def verify(sch: Path, build_json: Path | None = None, source_image: Path | None 
             rep.render = render_png(sch, work / "render.png")
             if source_image and Path(source_image).exists():
                 crop = None
-                if meta.get("circuit"):
+                if circuit is not None and not circuit.board:
                     from PIL import Image
                     from .circuit import load
                     with Image.open(source_image) as im:

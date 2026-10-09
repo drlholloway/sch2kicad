@@ -1,6 +1,6 @@
 ---
 name: sch2kicad
-description: Convert a schematic image or a guitar-pedal build document into a KiCad 10 schematic in the user's Pedal Division house style — verified pin for pin, footprints assigned, ready for PCB layout — and save its functional blocks (tone stack, gain stage, buffer...) as their own schematics. Use whenever the user wants to convert, redraw, copy or import a schematic from a PNG/JPG, a PDF build doc (PedalPCB, Aion FX, Parasit Studio, RunOffGroove...) or a Chuck's Boneyard post from the PedalPCB forum into KiCad; wants to copy a circuit block out of a published schematic; or wants to lay out a PCB for a circuit they only have as an image.
+description: Convert a schematic image or a guitar-pedal build document into a KiCad 10 schematic in the user's Pedal Division house style — verified pin for pin, footprints assigned, ready for PCB layout — and save its functional blocks (tone stack, gain stage, buffer...) as their own schematics. Use whenever the user wants to convert, redraw, copy or import a schematic from a PNG/JPG, a PDF build doc (PedalPCB, Aion FX, Parasit Studio, RunOffGroove...) or a Chuck's Boneyard post from the PedalPCB forum into KiCad; wants to copy a circuit block out of a published schematic; wants a schematic from a stripboard / vero / tagboard layout (Dirtbox Layouts, Tagboard Effects); or wants to lay out a PCB for a circuit they only have as an image.
 ---
 
 # Schematic → KiCad
@@ -166,6 +166,18 @@ outside; verify says so in a note rather than failing on it.
 **6. Report.** READY or not, what was asked or flagged, where the files are.
 Remind them: in KiCad, *Update PCB from Schematic* with **Group footprints
 based on symbol groups** brings the footprints in grouped by block.
+
+## Stripboard (vero) layouts
+
+A vero layout shows holes, cuts and links, not a schematic. Read it into
+`board.json`, hole by hole. `sch2kicad vero board.json` works the nets out of the
+strips and checks the cuts and links against the image. It also checks the counts
+the layout prints, and writes an overlay of the reading to compare with the
+layout. `--skeleton circuit.json` then writes every part and net. You draw the
+schematic by giving each pin a position, signal left to right. The build proves
+it connects exactly what the board does (`board: ... the schematic agrees OK`).
+Format, workflow and the Dirtbox style:
+[references/vero-format.md](references/vero-format.md).
 
 ## Rules that are not negotiable
 

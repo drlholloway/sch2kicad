@@ -69,7 +69,7 @@ def _cmd_compare(a) -> int:
         return 1
     render = render_png(sch, work / "render-hires.png", dpi=a.dpi)
     with Image.open(src) as im:
-        crop = circuit_extent(c, im.size)
+        crop = None if c.board else circuit_extent(c, im.size)
     out = side_by_side(src, render, work / ("side-by-side.png" if a.layout == "side" else "stacked.png"),
                        crop=crop, layout=a.layout, height=a.height)
     print(out)
@@ -87,6 +87,27 @@ def _cmd_crosscheck(a) -> int:
     rep = crosscheck_circuit(c, doc=Path(a.doc) if a.doc else None)
     print(rep.text())
     return 0 if not rep.disagreements else 1
+
+
+def _cmd_vero(a) -> int:
+    """A stripboard layout's reading: the nets its strips make, checked against the image."""
+    from .vero import derive, load_board, look, overlay, report, skeleton
+    b = load_board(Path(a.board))
+    nets = derive(b)
+    seen = look(b)
+    text, ok = report(b, nets, seen)
+    print(text)
+    ov = overlay(b, nets, seen, b.path.with_name(b.path.stem + ".overlay.png"))
+    if ov:
+        print(f"reading over the layout: {ov}")
+    if a.skeleton:
+        out = Path(a.skeleton)
+        if out.exists() and not a.force:
+            print(f"error: {out} exists; --force to replace it", file=sys.stderr)
+            return 1
+        out.write_text(json.dumps(skeleton(b, nets), indent=1) + "\n")
+        print(f"wrote {out}: every part and net, no positions yet")
+    return 0 if ok else 1
 
 
 def _cmd_ingest(a) -> int:
@@ -146,6 +167,12 @@ def main(argv: list[str] | None = None) -> int:
                    help="turn the drawing this many degrees clockwise instead of guessing "
                         "(a circuit drawn sideways on an upright page)")
     p.set_defaults(fn=_cmd_ingest)
+
+    p = sub.add_parser("vero", help="stripboard layout reading → nets, checked against the image")
+    p.add_argument("board", help="board.json")
+    p.add_argument("--skeleton", help="write a circuit.json with every part and net, to draw")
+    p.add_argument("--force", action="store_true", help="replace an existing --skeleton file")
+    p.set_defaults(fn=_cmd_vero)
 
     p = sub.add_parser("build", help="circuit.json → KiCad project, then verify")
     p.add_argument("circuit")

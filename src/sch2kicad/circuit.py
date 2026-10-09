@@ -105,6 +105,9 @@ class Circuit:
     # false when no 3PDT switches the jacks (buffered or JFET-switched bypass): IN and
     # OUT then get pads of their own instead of the 3PDT pad array
     true_bypass: bool = True
+    # a stripboard layout this schematic was drawn from (board.json, beside circuit.json):
+    # verify checks the schematic connects exactly what the board connects
+    board: str = ""
 
     # ------------------------------------------------------------------ nets
     def net(self, name: str) -> Net:
@@ -126,6 +129,12 @@ class Circuit:
         for n in self.nets:
             names[n] = None
         return list(names)
+
+    def board_path(self) -> Path | None:
+        if not self.board:
+            return None
+        p = Path(self.board)
+        return p if p.is_absolute() or self.path is None else self.path.parent / p
 
     def source_image(self) -> Path | None:
         img = self.source.get("image")
@@ -212,7 +221,8 @@ def from_dict(data: dict) -> Circuit:
                    blocks=blocks, uncertain=uncertain,
                    bom=[dict(r) for r in data.get("bom") or []],
                    bom_accept={str(k): str(v) for k, v in (data.get("bom_accept") or {}).items()},
-                   true_bypass=bool(data.get("true_bypass", True)))
+                   true_bypass=bool(data.get("true_bypass", True)),
+                   board=str(data.get("board") or ""))
 
 
 # ------------------------------------------------------------ value parsing

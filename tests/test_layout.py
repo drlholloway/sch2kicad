@@ -404,7 +404,20 @@ def test_every_flag_stands_upright(tmp_path, circuit):
     of those pins had a flag of its own rail close enough to wire to instead.
     """
     root = sexpr.parse(build(circuit, tmp_path / "board").sch.read_text())
-    assert [f for f in _flags(root) if f[3] != 0] == []
+    wires = []
+    for item in sexpr.children(root, "wire"):
+        xy = [c for c in (sexpr.child(item, "pts") or [""])[1:] if sexpr.head(c) == "xy"]
+        wires.append(((_num(xy[0][1]), _num(xy[0][2])), (_num(xy[1][1]), _num(xy[1][2]))))
+
+    def short_lead(f) -> bool:
+        """A ground upside down at the end of a short sideways lead: what Lane draws
+        where the spot under the lead is taken (LM386 pin 3 over pin 2's lead), and
+        allowed for that alone."""
+        at = (f[1], f[2])
+        return f[0] == "GND" and abs(f[3]) == 180 and any(
+            abs(a[1] - b[1]) < 1e-3 and math.dist(a, b) <= 3 * 2.54 + 1e-3 and
+            (math.dist(a, at) < 1e-3 or math.dist(b, at) < 1e-3) for a, b in wires)
+    assert [f for f in _flags(root) if f[3] != 0 and not short_lead(f)] == []
 
 
 @pytest.mark.parametrize("circuit", SAMPLES, ids=lambda p: p.name.split(".")[0])

@@ -1588,6 +1588,12 @@ class Builder:
             # 3's ground: the lead's end is the flag's own pin, and no corner is left in
             # open wire; then out and down a stub, for when that spot is taken
             cands += [([t.pos, pt(t.pos, t.out, s1)], upright) for s1 in near]
+            if self.c.net_kind(net) == "ground" and (pl is None or pl.res.part.type != "port"):
+                # where that spot is taken, the ground upside down at the end of the same
+                # short lead before a dog-leg: Lane's LM386 pin 3, with pin 2's lead
+                # running under it (Lane's call: a ground on its head there, yes). Not for
+                # a pad: Lane keeps the 3PDT array's GND pad's ground upright, dog-leg and all
+                cands += [([t.pos, pt(t.pos, t.out, s1)], Orient(180, None)) for s1 in near]
             cands += [([t.pos, pt(t.pos, t.out, s1), pt(pt(t.pos, t.out, s1), up_dir, s2)], upright)
                       for s1 in far for s2 in far]
         # step aside and come back to upright: the only way for a pin that points the

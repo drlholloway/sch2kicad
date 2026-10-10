@@ -40,6 +40,9 @@ TIP_TURN: float | None = 2.0
 # and what coming into a tip from the side pays: free, one branch could take a tip
 # from the side and leave the next to kink round it (Musket's C2)
 TIP_ARRIVE = 1.0
+TEXT_MARGIN = 0.5      # a wire this near a piece of text pays as if it crossed it
+TEXT_COST = 2.5        # what a wire pays for each grid step across text
+WIDEN_OVER = 6.0       # a route dearer than its distance by this looks further afield
 H, V = 1, 2
 DIRS = {(1, 0): H, (-1, 0): H, (0, 1): V, (0, -1): V}
 
@@ -129,15 +132,20 @@ class Router:
                 self.hard.add((i, j))
                 self.box_owner.setdefault((i, j), set()).add(owner)
 
-    def avoid(self, box: tuple[float, float, float, float], cost: float = 2.5) -> None:
+    def avoid(self, box: tuple[float, float, float, float], cost: float | None = None) -> None:
         """Make a wire pay to cross something readable (a value, a reference).
 
         Soft, never a wall: a net that can only be joined through a piece of text is
         still joined — a detour is cosmetic, a missing wire is a dead board.
         """
+        cost = TEXT_COST if cost is None else cost
         x0, y0, x1, y1 = box
-        for i in range(int(math.floor(x0 / GRID)), int(math.ceil(x1 / GRID)) + 1):
-            for j in range(int(math.floor(y0 / GRID)), int(math.ceil(y1 / GRID)) + 1):
+        # the grid lines the text lies on, and those within a little of it: rounding
+        # outward to whole cells charged a wire a grid clear of the text below it —
+        # VOLUME's tip on R12's row went up and round its own name
+        m = TEXT_MARGIN
+        for i in range(int(math.ceil((x0 - m) / GRID)), int(math.floor((x1 + m) / GRID)) + 1):
+            for j in range(int(math.ceil((y0 - m) / GRID)), int(math.floor((y1 + m) / GRID)) + 1):
                 self.soft[(i, j)] = self.soft.get((i, j), 0.0) + cost
 
     def block_pin(self, tip: tuple[float, float], out: tuple[int, int], length: float, net: str | None) -> None:
@@ -358,6 +366,15 @@ class Router:
                 found = self.search(net, t.cell, None if turn_at_tip else t.out, tree, pad)
                 if found:
                     break
+            if found and pad == 8:
+                # the near box can hold only a dear way round: Memory Lapse's LM386 output
+                # ran on through the grounds under PT2399, crossing their leads, where
+                # Lane runs it a few grid lower, under them all
+                near = min(abs(t.cell[0] - c[0]) + abs(t.cell[1] - c[1]) for c in tree)
+                if found[1] > near + WIDEN_OVER:
+                    wide = self.search(net, t.cell, None if turn_at_tip else t.out, tree, 24)
+                    if wide and wide[1] < found[1]:
+                        found = wide
             if not found:
                 failed.append(t.owner)
                 continue

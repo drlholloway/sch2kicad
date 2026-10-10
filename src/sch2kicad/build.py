@@ -40,6 +40,11 @@ class BuildResult:
     uncertain: list[str] = field(default_factory=list)
 
 
+# what a name put under its part, between it and the next, costs in the room rule:
+# more than moving a part lined up with its pin a grid (three)
+BELOW = 4.0
+
+
 def safe_name(s: str) -> str:
     s = re.sub(r"[\\/:*?\"<>|]+", "-", s).strip()
     return re.sub(r"\s+", " ", s) or "converted"
@@ -178,6 +183,7 @@ class Builder:
         self.flag_boxes: list[tuple] = []         # every flag symbol drawn, with its value text
         self.flag_rows: dict[str, float] = {}     # terminal owner → the line its flag stands on
         self.power_nodes: dict[str, dict[str, str]] = {}   # rail → {owner: "lead"/"follow"} on the power row
+        self.name_side: dict[str, tuple[int, int]] = {}    # part key → the side the room rule made for its name
 
     # ............................................................ helpers
     def pin_net(self, pl: Placed, number: str) -> str | None:
@@ -427,7 +433,8 @@ class Builder:
             dirs = [pl.pin_dir(p.number) for p in pl.pins()]
             inst.field_pos = field_positions(inst, pl.box(), dirs, names,
                                              blocked=parts_boxes + self.text_boxes,
-                                             others=[o.box() for o in lay.placed if o is not pl and _area(o.box())])
+                                             others=[o.box() for o in lay.placed if o is not pl and _area(o.box())],
+                                             prefer=self.name_side.get(pl.key))
             for k, at in inst.field_pos.items():   # flags and wires keep off this text
                 self.text_boxes.append(_text_box(at, _field_text(inst, k)))
 
@@ -884,7 +891,7 @@ class Builder:
         if x1 > ux1 or y1 > uy1:
             lay.sheet = choose_sheet(x1 - ux0 + 10, y1 - uy0 + 10)
 
-    def _point_at(self, reach: int = 4) -> None:
+    def _point_at(self, reach: int = 4, done: set[int] = frozenset()) -> None:
         """Slide a part so a lead of it points straight at the pin it joins.
 
         Lane's Memory Lapse puts R13 straight under the R12/VOLUME node and C16
@@ -939,17 +946,76 @@ class Builder:
                     pl.origin = old
                 else:
                     break
+        self._tip_on_line(pins_of, reach, done)
 
-    def _give_room(self, pitch: int = 5, passes: int = 6) -> None:
-        """Keep side-by-side parts far enough apart for a label between them.
+    def _tip_on_line(self, pins_of, reach: int, done) -> None:
+        """Slide a pot along a lead of it until that lead's tip is on the line of the
+        two-pin lead pointing across at it.
+
+        Lane's VOLUME stands with its end pin's tip on R12's row, so the wire comes
+        along the row and stops at the tip; standing a grid or two off the row, the
+        wire stepped up to meet it. Pads strung level off the pot's other pins (OUT,
+        on its wiper) go with it, so they stay level. A pot a run has laid along its
+        line (STABILITY) stays where the run put it."""
+        lay = self.layout
+        for pl in lay.placed:
+            if pl.res.part.type not in POTS or id(pl) in done:
+                continue
+            for q in pl.pins():
+                n = q.number
+                net = self.pin_net(pl, n)
+                if not net or net not in pins_of:
+                    continue
+                at, d = pl.pin_pos(n), pl.pin_dir(n)
+                ax = 0 if d[0] else 1                      # the pot slides along its lead
+                best = None
+                for o, m in pins_of[net]:
+                    if o is pl or len(o.pins()) != 2:
+                        continue
+                    t, dm = o.pin_pos(m), o.pin_dir(m)
+                    if dm[ax] != 0:
+                        continue                           # not pointing across the lead
+                    ahead = (at[0] - t[0]) * dm[0] + (at[1] - t[1]) * dm[1]
+                    off = t[ax] - at[ax]
+                    if ahead > 0 and 0 < abs(off) <= reach * GRID + 1e-3 and (best is None or ahead < best[0]):
+                        best = (ahead, off)
+                if best is None:
+                    continue
+                off = best[1]
+                net_of = {r.number: self.pin_net(pl, r.number) for r in pl.pins() if r.number != n}
+                pads = [o for o in lay.placed if o.res.part.type == "port" and len(o.pins()) == 1
+                        and any(self.pin_net(o, r.number) == nt and nt and
+                                abs(o.pin_pos(r.number)[ax] - pl.pin_pos(k)[ax]) < 1e-3
+                                for r in o.pins() for k, nt in net_of.items())]
+                group = [pl] + pads
+                olds = [(o, o.origin) for o in group]
+                for o, old in olds:
+                    o.origin = (snap(old[0] + off), old[1]) if ax == 0 else (old[0], snap(old[1] + off))
+                if any(self._crowded(o) for o in group):
+                    for o, old in olds:
+                        o.origin = old
+                else:
+                    break
+
+    def _give_room(self, pitch: int = 5, bare: int = 3, reach: int = 4, most: int = 8) -> None:
+        """Keep side-by-side parts far enough apart for their names, and no further.
 
         Lane's Memory Lapse spreads PT2399's R6, R8 and R11: each lined up with its pin
         (14, 13, 12), they stood a grid apart with nowhere for their names, "R11 10K"
-        running into "R8 10K", and Lane gave the stack room even at the cost of R11
-        meeting pin 12 square. Two-pin parts lying parallel and alongside each other
-        keep ``pitch`` grid between their axes: the outer one steps away (down, or
-        right), as far as it takes, and the next one after it in turn. Only for a
-        schematic that is ours."""
+        running into "R8 10K". Lane put R6's name above it, R11's below it and R8's
+        between R6 and R8, so only that one gap needed room for a name: R11 kept pin
+        12's row, R8 stepped a grid off 13's and R6 went up. Spreading every gap alike
+        had pushed R11 off its row for room nothing used, and left R7 and R6, two
+        names in one gap, no more room than one.
+
+        Two-pin parts lying parallel and alongside each other, a few grid apart, are a
+        stack. Each name in the stack goes to one side of its part, the gap that side
+        and the outer sides of the end parts holding at most what they have room for:
+        ``bare`` grid between axes with no name in the gap, ``pitch`` with one, two
+        more for each name after. Of every way to put the names, the stack takes the
+        spread that moves its parts least, a part lined up with a pin of its net
+        counting three times — never more than ``reach`` grid each, and only to where
+        it lands clear. Only for a schematic that is ours."""
         if not self.c.ours:
             return
         lay = self.layout
@@ -975,57 +1041,111 @@ class Builder:
                             return True
             return False
 
-        def crowds(pl, ax: int, across: int) -> bool:
-            """Has a move put ``pl`` nearer the pitch to another part alongside it?
-            (R8 stepping up out of R11's way had stepped into R6's.)"""
-            e, mid = pl.extent(), (pl.box()[across] + pl.box()[across + 2]) / 2
-            for o in two:
-                if o is pl or axis_of(o) != ax:
-                    continue
-                eo = o.extent()
-                if eo[ax + 2] <= e[ax] or e[ax + 2] <= eo[ax]:
-                    continue
-                if abs((o.box()[across] + o.box()[across + 2]) / 2 - mid) < pitch * GRID - 1e-3:
-                    return True
-            return False
+        for ax in (0, 1):
+            across = 1 - ax                                     # the coordinate between them
+            parts = [pl for pl in two if axis_of(pl) == ax]
 
-        for _ in range(passes):
-            moved = False
-            for i, a in enumerate(two):
-                ax = axis_of(a)
-                if ax is None:
+            def mid(pl):
+                return (pl.box()[across] + pl.box()[across + 2]) / 2
+
+            def alongside(a, c) -> bool:
+                ea, ec = a.extent(), c.extent()
+                return not (ea[ax + 2] <= ec[ax] or ec[ax + 2] <= ea[ax])
+
+            def near(a, c) -> bool:
+                # near enough that spreading the stack may bring them together: R6
+                # going up for R8's name came within a name of R7
+                return alongside(a, c) and abs(mid(a) - mid(c)) <= (2 * pitch + reach) * GRID
+            seen: set[int] = set()
+            for first in parts:
+                if id(first) in seen:
                     continue
-                across = 1 - ax                                 # the coordinate between them
-                for c in two[i + 1:]:
-                    if axis_of(c) != ax:
+                stack, todo = [], [first]
+                while todo:
+                    pl = todo.pop()
+                    if id(pl) in seen:
                         continue
-                    ea, ec = a.extent(), c.extent()
-                    if ea[ax + 2] <= ec[ax] or ec[ax + 2] <= ea[ax]:
-                        continue                                # not alongside
-                    ca = (a.box()[across] + a.box()[across + 2]) / 2
-                    cc = (c.box()[across] + c.box()[across + 2]) / 2
-                    need = pitch * GRID - abs(cc - ca)
-                    if need <= 1e-3 or abs(cc - ca) > 2 * pitch * GRID:
+                    seen.add(id(pl))
+                    stack.append(pl)
+                    todo += [o for o in parts if id(o) not in seen and near(pl, o)]
+                if 2 <= len(stack) <= most:
+                    self._spread(stack, ax, mid, alongside, lined, pitch, bare, reach)
+
+    def _spread(self, stack, ax, mid, alongside, lined, pitch, bare, reach) -> None:
+        """Spread one stack of parts lying alongside each other (see ``_give_room``)."""
+        from itertools import product
+        lay = self.layout
+        across = 1 - ax
+        stack = sorted(stack, key=mid)
+        k = len(stack)
+        rest = [o for o in lay.placed if all(o is not s for s in stack)]
+        # each part's neighbour on either side: the gap a name put that side lands in
+        below = [next((j for j in range(i + 1, k) if alongside(stack[i], stack[j])), None) for i in range(k)]
+        above = [next((j for j in range(i - 1, -1, -1) if alongside(stack[i], stack[j])), None) for i in range(k)]
+        pairs = [(i, j) for i in range(k) for j in range(i + 1, k) if alongside(stack[i], stack[j])]
+        if not pairs:
+            return
+        base = [mid(pl) for pl in stack]
+        weight = [3 if lined(pl) else 1 for pl in stack]
+        steps = sorted(range(-reach, reach + 1), key=abs)
+        olds = [pl.origin for pl in stack]
+
+        def shifted(pl, old, s):
+            return (snap(old[0] + s * GRID), old[1]) if across == 0 else (old[0], snap(old[1] + s * GRID))
+        clear = []
+        for pl, old in zip(stack, olds):
+            ok = set()
+            for s in steps:
+                pl.origin = shifted(pl, old, s)
+                if not lay.conflicts(pl, rest):
+                    ok.add(s)
+            pl.origin = old
+            clear.append(ok)
+        best = None
+        # -1: the name goes before its part. The end parts' names go outward, where
+        # nothing is; only those between two others have a choice to make
+        choice = [(-1,) if above[i] is None else (1,) if below[i] is None else (-1, 1) for i in range(k)]
+        for sides in product(*choice):
+            need = {}
+            for i, j in pairs:
+                names = (sides[i] == 1 and below[i] == j) + (sides[j] == -1 and above[j] == i)
+                need[(i, j)] = (bare if not names else pitch + 2 * (names - 1)) * GRID
+            # a name goes above (or before) its part: Lane gave up R8's straight lead
+            # to pin 13 rather than put its name under it, between it and R11. Below
+            # the bottom part, with nothing there, costs next to nothing
+            lean = sum((BELOW if below[i] is not None else 1e-3) for i, s in enumerate(sides) if s == 1)
+            pos: list[int] = []
+
+            def search(i: int, cost: float) -> None:
+                nonlocal best
+                if best is not None and cost + lean >= best[0]:
+                    return
+                if i == k:
+                    best = (cost + lean, list(pos), sides)
+                    return
+                for s in steps:
+                    if s not in clear[i]:
                         continue
-                    # the one not lined up with a pin of its net steps away: Lane kept
-                    # R11 on pin 12's row and moved R6 up; failing that, the outer one
-                    lo, hi = (a, c) if ca <= cc else (c, a)
-                    order = [hi, lo] if lined(lo) and not lined(hi) else \
-                        [lo, hi] if lined(hi) and not lined(lo) else [hi, lo]
-                    step = snap(need) if snap(need) >= need - 1e-3 else snap(need) + GRID
-                    for mover in order:
-                        sign = 1 if mover is hi else -1          # away from the other
-                        old = mover.origin
-                        mover.origin = (snap(old[0] + sign * step), old[1]) if across == 0 \
-                            else (old[0], snap(old[1] + sign * step))
-                        if lay.conflicts(mover, [o for o in lay.placed if o is not mover]) or \
-                                crowds(mover, ax, across):
-                            mover.origin = old
-                        else:
-                            moved = True
-                            break
-            if not moved:
-                break
+                    at = base[i] + s * GRID
+                    if any(at - (base[j] + pos[j] * GRID) < need[(j, i)] - 1e-3 for j in range(i) if (j, i) in need):
+                        continue
+                    pos.append(s)
+                    search(i + 1, cost + abs(s) * weight[i] + s * s * 0.1)   # two one-grid moves before one of two
+                    pos.pop()
+            search(0, 0.0)
+        if best is None:
+            return
+        for pl, old, s in zip(stack, olds, best[1]):
+            pl.origin = shifted(pl, old, s)
+        if any(lay.conflicts(pl, [o for o in lay.placed if o is not pl]) for pl in stack):
+            for pl, old in zip(stack, olds):
+                pl.origin = old
+            return
+        # the names go where the room was made for them
+        for pl, side in zip(stack, best[2]):
+            d = [0, 0]
+            d[across] = side
+            self.name_side[pl.key] = tuple(d)
 
     def _pin_caps(self, out: int = 3, near: int = 3) -> None:
         """Stand a part bridging two pins on one side of a chip right beside them, one
@@ -1034,8 +1154,11 @@ class Builder:
         Lane's Memory Lapse has PT2399's filter caps (C7 across pins 15-16, C9 across
         11-12, C10 across 9-10) standing just off the chip between their two pins,
         parallel to its side. Placed where they were drawn, C10 hung four grid below
-        its pins and both its leads went the long way round. Only for a schematic that
-        is ours; a drawing puts them where its designer wanted them."""
+        its pins and both its leads went the long way round. The end levelled is the one
+        whose net goes on to other parts — C9's on pin 12, which runs on to R11, so that
+        wire passes straight through the cap's tip — or failing that the upper one (or
+        left). Only for a schematic that is ours; a drawing puts them where its
+        designer wanted them."""
         if not self.c.ours:
             return
         lay = self.layout
@@ -1046,6 +1169,12 @@ class Builder:
                 net = self.pin_net(chip, q.number)
                 if net and not self._draw_as_flags(net):
                     where.setdefault(net, []).append((chip, q.number))
+        count: dict[str, int] = {}
+        for o in lay.placed:
+            for q in o.pins():
+                net = self.pin_net(o, q.number)
+                if net:
+                    count[net] = count.get(net, 0) + 1
         for pl in lay.placed:
             if len(pl.pins()) != 2 or pl.res.part.type == "port":
                 continue
@@ -1079,7 +1208,8 @@ class Builder:
                 across = pa[1 - along]                     # the pins' tips, across the side
                 # one end level with its pin, as Lane has C9 on pin 12's row: that lead
                 # is then a straight wire, and only the other hooks round
-                mid = pa[along] - ea[along]
+                on_b = (count.get(nb, 0), -pb[along]) > (count.get(na, 0), -pa[along])
+                mid = pb[along] - eb[along] if on_b else pa[along] - ea[along]
                 for k in range(out, out + 3):
                     line = across + d[1 - along] * k * GRID   # k grid out from the tips
                     shift = [0.0, 0.0]
@@ -1206,7 +1336,7 @@ class Builder:
                             continue
                         if self._hang(hp, hn, at, hold, run):
                             done.add(id(hp))
-        self._point_at()
+        self._point_at(done=done)
 
     def _make_room(self, pl: Placed, run, most: int = 12) -> bool:
         """Push what crowds a part landing on a run's line out of the way, by whole blocks.
@@ -1691,14 +1821,16 @@ class Builder:
                     out[t.owner] = line
         return out
 
-    def _block_rows(self, terms: dict[str, list[Terminal]], near: int = 4) -> dict[str, float]:
+    def _block_rows(self, terms: dict[str, list[Terminal]], near: int = 5) -> dict[str, float]:
         """Level flags within a block, where there is no drawing to say where they stand.
 
         Lane's Memory Lapse hangs C3's and C2's grounds, under PT2399's CC1 and CC0, on
         one line; a fixed stub under each left them a grid or two apart, the caps being
         a grid or two apart. Pins of one rail, in one block, pointing the way the flag
-        stands and within ``near`` grid of each other across it form a row, and the row
-        ends on the furthest pin's ordinary stub, as a drawing's baseline does."""
+        stands and each within ``near`` grid of the next across it form a row, and the
+        row ends on the furthest pin's ordinary stub, as a drawing's baseline does.
+        (Sub Octave's VOLUME, stood with its tip on C11's row, came five grid above
+        R10 and C10, and its ground stood within a flag's reach of R10's.)"""
         block_of = {ref: b.name for b in self.c.blocks for ref in b.parts}
         out: dict[str, float] = {}
         for net, ts in terms.items():
@@ -1717,7 +1849,7 @@ class Builder:
                 g.sort(key=lambda t: t.pos[axis] * up[axis])
                 row: list[Terminal] = []
                 for t in g + [None]:
-                    if t is not None and row and abs(t.pos[axis] - row[0].pos[axis]) <= near * GRID:
+                    if t is not None and row and abs(t.pos[axis] - row[-1].pos[axis]) <= near * GRID:
                         row.append(t)
                         continue
                     if len(row) >= 2:
@@ -1892,7 +2024,8 @@ class Builder:
                 continue
             dirs = [pl.pin_dir(p.number) for p in pl.pins()]
             inst.field_pos = field_positions(inst, pl.box(), dirs, names, blocked=around,
-                                             others=[p2.box() for p2, _, _ in specs if p2 is not pl and _area(p2.box())])
+                                             others=[p2.box() for p2, _, _ in specs if p2 is not pl and _area(p2.box())],
+                                             prefer=self.name_side.get(pl.key))
             mine[id(inst)] = _inst_boxes(inst)
         self.text_boxes = [b for v in mine.values() for b in v]
 

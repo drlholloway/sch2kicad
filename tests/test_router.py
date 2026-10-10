@@ -254,7 +254,7 @@ def test_a_cap_across_two_chip_pins_stands_beside_them(tmp_path):
     assert abs(ends[0][0] - ends[1][0]) < 1e-3                       # stands up, like the side
     assert 0 < ends[0][0] - p9[0] <= 4 * 1.27                        # just off the pins
     mid = (p9[1] + p10[1]) / 2
-    assert abs((ends[0][1] + ends[1][1]) / 2 - mid) <= 1.27            # centred between them
+    assert abs((ends[0][1] + ends[1][1]) / 2 - mid) <= 1.27 + 1e-3     # centred between them
 
 
 def test_a_lead_points_straight_at_what_it_joins(tmp_path):
@@ -288,10 +288,80 @@ def test_the_input_runs_straight_into_the_pin_it_feeds(tmp_path):
 
 def test_side_by_side_parts_leave_room_for_their_names(tmp_path):
     """Lined up with PT2399 pins 14, 13 and 12, R6, R8 and R11 stood a grid apart and
-    R8's name was pushed down beside R11's. Lane gave the stack room."""
+    R8's name was pushed down beside R11's. Lane gave the stack room for the one name
+    that goes between two of them, and kept R11 on pin 12's row."""
     b, placed = _memory_lapse(tmp_path, "room")
     ys = sorted((placed[r].box()[1] + placed[r].box()[3]) / 2 for r in ("R6", "R8", "R11"))
-    assert ys[1] - ys[0] >= 5 * 1.27 - 1e-3 and ys[2] - ys[1] >= 5 * 1.27 - 1e-3
+    gaps = [ys[1] - ys[0], ys[2] - ys[1]]
+    assert max(gaps) >= 4 * 1.27 - 1e-3 and min(gaps) >= 3 * 1.27 - 1e-3
+    r11 = placed["R11"]
+    pin12 = placed["IC2"].pin_pos(placed["IC2"].pinmap["OP2-OUT"]) if "OP2-OUT" in placed["IC2"].pinmap \
+        else placed["IC2"].pin_pos("12")
+    assert any(abs(r11.pin_pos(q.number)[1] - pin12[1]) < 1e-3 for q in r11.pins())
+    assert b.text_clashes() == 0
+
+
+def test_room_goes_only_where_a_name_goes():
+    """Three resistors in a column: the two outer names go outside, the middle one
+    takes one gap, so only that gap is widened — and the one moved is not the part
+    lined up with a pin."""
+    from sch2kicad.build import Builder as B
+    from types import SimpleNamespace as NS
+    moved = {}
+
+    class P:
+        def __init__(self, ref, y):
+            self.res, self.y, self.key = NS(ref=ref), y, ref
+        @property
+        def origin(self):
+            return (0.0, self.y)
+        @origin.setter
+        def origin(self, o):
+            moved[self.res.ref] = o[1] - self.start
+            self.y = o[1]
+
+    parts = [P("A", 0.0), P("B", 3 * 1.27), P("C", 7 * 1.27)]
+    for pl in parts:
+        pl.start = pl.y
+    lay = NS(placed=parts, conflicts=lambda pl, others: False)
+    fake = NS(layout=lay, name_side={})
+    B._spread(fake, parts, 0, lambda pl: pl.y, lambda a, c: True,
+              lambda pl: pl.res.ref == "C", 4, 3, 4)
+    ys = sorted(pl.y for pl in parts)
+    assert ys[1] - ys[0] >= 3 * 1.27 - 1e-3 and ys[2] - ys[1] >= 3 * 1.27 - 1e-3
+    assert max(ys[1] - ys[0], ys[2] - ys[1]) >= 4 * 1.27 - 1e-3
+    assert moved.get("C", 0.0) == 0.0                     # lined up: stays
+    # B's name goes above it, between A and B: one of the two steps a grid
+    assert sorted(abs(moved.get(r, 0.0)) for r in "AB") == [0.0, 1.27]
+    assert fake.name_side == {"A": (0, -1), "B": (0, -1), "C": (0, 1)}
+
+
+def test_a_pin_cap_is_level_with_the_pin_whose_net_goes_on(tmp_path):
+    """C9 bridges PT2399 pins 11 and 12; pin 12 goes on to R11. Lane levels C9's top
+    with pin 12 so that wire runs straight past the cap's tip to R11."""
+    b, placed = _memory_lapse(tmp_path, "c9")
+    ic2, c9 = placed["IC2"], placed["C9"]
+    tips = [c9.pin_pos(q.number)[1] for q in c9.pins()]
+    assert any(abs(t - ic2.pin_pos("12")[1]) < 1e-3 for t in tips)
+
+
+def test_a_pot_stands_with_its_tip_on_the_row_it_joins(tmp_path):
+    """Lane's VOLUME has its end pin's tip on R12's row and DELAY its tip on R1's, so
+    the wire comes along the row and stops at the tip."""
+    b, placed = _memory_lapse(tmp_path, "tips")
+    for pot, res in (("VOLUME", "R12"), ("DELAY", "R1")):
+        rows = {round(placed[res].pin_pos(q.number)[1], 3) for q in placed[res].pins()}
+        tips = {round(placed[pot].pin_pos(q.number)[1], 3) for q in placed[pot].pins()}
+        assert rows & tips, pot
+
+
+def test_text_charges_only_the_rows_it_lies_on():
+    """A name ending a little above a grid row leaves the row free: rounding the box
+    outward had VOLUME's wire go up and round its own name."""
+    r = Router((0, 0, 50, 50))
+    r.avoid((10.0, 10.0, 20.0, 13.0))                       # rows 8..10 (10.16..12.7) are under it
+    assert (10, round(13.97 / 1.27)) not in r.soft           # row 11, at 13.97: clear
+    assert (10, 9) in r.soft
 
 
 def test_a_row_of_level_grounds_keeps_a_flag_each(tmp_path):

@@ -296,7 +296,8 @@ def _overlap_area(a, b) -> float:
 def field_positions(inst: SymbolInstance, box: tuple[float, float, float, float],
                     pin_dirs: list[tuple[int, int]], names: list[str],
                     blocked: list[tuple[float, float, float, float]] = (),
-                    others: list[tuple[float, float, float, float]] = ()) -> dict[str, tuple[float, float]]:
+                    others: list[tuple[float, float, float, float]] = (),
+                    prefer: tuple[int, int] | None = None) -> dict[str, tuple[float, float]]:
     """Stack Reference / Value / Label beside the body, clear of pins and of everything else.
 
     Sides without pins come first, then the rest; on each side the stack slides
@@ -309,6 +310,9 @@ def field_positions(inst: SymbolInstance, box: tuple[float, float, float, float]
     part's own is taken only when there is no clear spot of its own: Memory Lapse's
     R8, crowded out from beside itself, stood its name under R11, beside R11's own.
     A name across a wire reads worse still, so a clear spot beats a covered one.
+
+    ``prefer`` is the side the layout made room on (a stack of resistors spread for
+    the name between two of them): it is tried all the way out before any other.
     """
     x0, y0, x1, y1 = box
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
@@ -349,11 +353,14 @@ def field_positions(inst: SymbolInstance, box: tuple[float, float, float, float]
 
     order = [(1, 0), (-1, 0), (0, -1), (0, 1)]
     free = [s for s in order if s not in used]
-    first = at_side(free[0], 0.0, 0.0) if free else at_side((1, 0), 0.0, -2.2 - hy)
+    first = at_side(prefer if prefer in free else free[0], 0.0, 0.0) if free else at_side((1, 0), 0.0, -2.2 - hy)
     if not blocked:
         return first
     best, worst = first, (spoilt(first) > 0, not ours(first), spoilt(first))
-    for sides in (free, [s for s in order if s in used]):
+    groups = [free, [s for s in order if s in used]]
+    if prefer in free:
+        groups = [[prefer], [s for s in free if s != prefer], groups[1]]
+    for sides in groups:
         for push in _PUSHES:
             for slide in _SHIFTS:
                 for side in sides:

@@ -1380,7 +1380,11 @@ class Builder:
         if pl.res.part.type in POTS:
             ends = {pl.pinmap.get("ccw"), pl.pinmap.get("cw")}
             if n in ends and None not in ends:
-                return next(e for e in ends if e != n)
+                far = next(e for e in ends if e != n)
+                # a run that ends in a rail ends at the pot: Memory Lapse's DELAY goes
+                # from R1 to ground, and Lane stands it upright with that end down to
+                # its flag rather than on its side along the run
+                return None if self._draw_as_flags(self.pin_net(pl, far) or "") else far
         return None
 
     def _lay_along(self, pl: Placed, n: str, far: str, d, at, hold: int) -> bool:
@@ -1580,6 +1584,10 @@ class Builder:
         if t.out == up_dir:                        # pin already points the flag's way
             cands += [([t.pos, pt(t.pos, t.out, s)], upright) for s in (2.54, 3.81, 5.08, 1.27, 7.62)]
         elif t.out[1] == 0:                        # sideways pin: out, then turn to stand the flag up
+            # the flag right at the end of a short lead first, as Lane hangs LM386 pin
+            # 3's ground: the lead's end is the flag's own pin, and no corner is left in
+            # open wire; then out and down a stub, for when that spot is taken
+            cands += [([t.pos, pt(t.pos, t.out, s1)], upright) for s1 in near]
             cands += [([t.pos, pt(t.pos, t.out, s1), pt(pt(t.pos, t.out, s1), up_dir, s2)], upright)
                       for s1 in far for s2 in far]
         # step aside and come back to upright: the only way for a pin that points the

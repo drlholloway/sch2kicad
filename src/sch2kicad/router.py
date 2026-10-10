@@ -23,6 +23,11 @@ Cell = tuple[int, int]
 # runs down the column the drawing gave it rather than the one the shortest tree
 # finds, little enough that a guide a grid out of true never buys a detour
 OFF_GUIDE = 0.25
+# a bend costs this many grid of wire, a crossing of another net's wire this many.
+# Three, not two: Lane's wiring takes the longer way round for a turn fewer (the
+# FILTER return round the bottom of Memory Lapse); at three the drawn samples lose
+# ten of their 24 jogs and 40 corners, still 60% on the drawing's own lines
+BEND, CROSS = 3.0, 3.0
 # a bend this many cells or fewer after the last one is a jog: a step that reads as
 # a slip of the pen rather than a route, so it pays on top of the two bends
 JOG_RUN, JOG = 3, 3.0
@@ -233,7 +238,6 @@ class Router:
             dy = 0 if ty0 <= c[1] <= ty1 else min(abs(c[1] - ty0), abs(c[1] - ty1))
             return dx + dy
 
-        BEND, CROSS = 2.0, 3.0
         guide = self.guide.get(net)
         # state: (cell, incoming move vector, cells run since the last bend, capped);
         # a wire leaves its start as if it had come a long way, so turning just past

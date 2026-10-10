@@ -334,3 +334,26 @@ def test_a_wire_may_turn_at_a_pin_tip(tmp_path, monkeypatch):
     monkeypatch.setattr(router, "TIP_TURN", None)
     stepping = sum(c for c, _ in _shape(path, tmp_path / "step").values())
     assert turning < stepping
+
+
+def test_a_pot_a_run_ends_at_stands_with_its_ground_down(tmp_path):
+    """The run from PT2399's VCO pin goes through R1 to DELAY and ends in ground. Lane
+    stands DELAY upright with that end down to its flag; turned on its side to lie
+    along the run, its grounded end pointed sideways and needed a dog-leg."""
+    b, placed = _memory_lapse(tmp_path, "delay")
+    pl = placed["DELAY"]
+    ground_end = next(n for s, n in pl.pinmap.items() if s in ("ccw", "cw") and b.pin_net(pl, n) == "GND")
+    assert pl.pin_dir(ground_end) == (0, 1)
+
+
+def test_a_sideways_ground_takes_its_flag_at_the_end_of_a_short_lead(tmp_path):
+    """A ground pin pointing sideways took its flag out a grid, then down a stub: a
+    corner in open wire. Lane runs a short lead straight to the ground symbol, the
+    lead's end its pin. The POWER socket's ground pin points sideways; where the spot
+    under the lead is free (LM386 pin 3's is not: pin 2's lead runs there) the flag
+    stands right at the end of it."""
+    b, placed = _memory_lapse(tmp_path, "lead")
+    j1 = placed["J1"]
+    pin = j1.pin_pos(j1.pinmap["-"])
+    flags = [s.at for s in b.w.symbols if s.lib.lib_id.endswith(":GND")]
+    assert any(abs(f[1] - pin[1]) < 1e-3 and 0 < abs(f[0] - pin[0]) <= 3 * 2.54 for f in flags)

@@ -959,6 +959,36 @@ class Builder:
             a, b = (pl.pin_pos(q.number) for q in pl.pins())
             return 0 if abs(a[1] - b[1]) < 1e-3 else (1 if abs(a[0] - b[0]) < 1e-3 else None)
 
+        def lined(pl) -> bool:
+            """Does a lead of ``pl`` lie level with a pin of its net on another part?"""
+            for q in pl.pins():
+                net = self.pin_net(pl, q.number)
+                if not net or self._draw_as_flags(net):
+                    continue
+                at, d = pl.pin_pos(q.number), pl.pin_dir(q.number)
+                side = 1 if d[0] else 0
+                for o in lay.placed:
+                    if o is pl:
+                        continue
+                    for r in o.pins():
+                        if self.pin_net(o, r.number) == net and abs(o.pin_pos(r.number)[side] - at[side]) < 1e-3:
+                            return True
+            return False
+
+        def crowds(pl, ax: int, across: int) -> bool:
+            """Has a move put ``pl`` nearer the pitch to another part alongside it?
+            (R8 stepping up out of R11's way had stepped into R6's.)"""
+            e, mid = pl.extent(), (pl.box()[across] + pl.box()[across + 2]) / 2
+            for o in two:
+                if o is pl or axis_of(o) != ax:
+                    continue
+                eo = o.extent()
+                if eo[ax + 2] <= e[ax] or e[ax + 2] <= eo[ax]:
+                    continue
+                if abs((o.box()[across] + o.box()[across + 2]) / 2 - mid) < pitch * GRID - 1e-3:
+                    return True
+            return False
+
         for _ in range(passes):
             moved = False
             for i, a in enumerate(two):
@@ -977,19 +1007,29 @@ class Builder:
                     need = pitch * GRID - abs(cc - ca)
                     if need <= 1e-3 or abs(cc - ca) > 2 * pitch * GRID:
                         continue
-                    outer = c if cc >= ca else a
+                    # the one not lined up with a pin of its net steps away: Lane kept
+                    # R11 on pin 12's row and moved R6 up; failing that, the outer one
+                    lo, hi = (a, c) if ca <= cc else (c, a)
+                    order = [hi, lo] if lined(lo) and not lined(hi) else \
+                        [lo, hi] if lined(hi) and not lined(lo) else [hi, lo]
                     step = snap(need) if snap(need) >= need - 1e-3 else snap(need) + GRID
-                    old = outer.origin
-                    outer.origin = (snap(old[0] + step), old[1]) if across == 0 else (old[0], snap(old[1] + step))
-                    if lay.conflicts(outer, [o for o in lay.placed if o is not outer]):
-                        outer.origin = old
-                    else:
-                        moved = True
+                    for mover in order:
+                        sign = 1 if mover is hi else -1          # away from the other
+                        old = mover.origin
+                        mover.origin = (snap(old[0] + sign * step), old[1]) if across == 0 \
+                            else (old[0], snap(old[1] + sign * step))
+                        if lay.conflicts(mover, [o for o in lay.placed if o is not mover]) or \
+                                crowds(mover, ax, across):
+                            mover.origin = old
+                        else:
+                            moved = True
+                            break
             if not moved:
                 break
 
     def _pin_caps(self, out: int = 3, near: int = 3) -> None:
-        """Stand a part bridging two pins on one side of a chip right beside them.
+        """Stand a part bridging two pins on one side of a chip right beside them, one
+        end level with its pin.
 
         Lane's Memory Lapse has PT2399's filter caps (C7 across pins 15-16, C9 across
         11-12, C10 across 9-10) standing just off the chip between their two pins,
@@ -1037,7 +1077,9 @@ class Builder:
                 if abs(ea[1 - along] - eb[1 - along]) > 1e-3 or (eb[along] - ea[along]) * (pb[along] - pa[along]) <= 0:
                     continue
                 across = pa[1 - along]                     # the pins' tips, across the side
-                mid = (pa[along] + pb[along]) / 2 - (ea[along] + eb[along]) / 2
+                # one end level with its pin, as Lane has C9 on pin 12's row: that lead
+                # is then a straight wire, and only the other hooks round
+                mid = pa[along] - ea[along]
                 for k in range(out, out + 3):
                     line = across + d[1 - along] * k * GRID   # k grid out from the tips
                     shift = [0.0, 0.0]

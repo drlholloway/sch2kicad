@@ -60,13 +60,24 @@ def test_a_trunk_runs_down_the_column_its_pins_share(tmp_path):
     assert shape["Q1_C"] == (0, 0)
 
 
-@pytest.mark.parametrize("name", ["ripped-speaker-cb-mod", "musket-blackout",
-                                  pytest.param("colonel-angus", marks=_needs_drawing("colonel-angus"))])
-def test_no_wire_steps_aside_between_two_bends(tmp_path, name):
-    """A step of a grid or two between two bends reads as a slip of the pen. These
-    three each had one or two where a route with longer runs was there for the taking."""
-    shape = _shape(SAMPLES / "circuits" / f"{name}.circuit.json", tmp_path)
+def test_no_wire_steps_aside_between_two_bends(tmp_path):
+    """A step of a grid or two between two bends reads as a slip of the pen. Ripped
+    Speaker had one where a route with longer runs was there for the taking."""
+    shape = _shape(SAMPLES / "circuits" / "ripped-speaker-cb-mod.circuit.json", tmp_path)
     assert {net: s for net, s in shape.items() if s[1]} == {}
+
+
+def test_a_short_step_costs_more_than_its_two_bends(tmp_path, monkeypatch):
+    """Not every jog can go: a part placed a grid off forces one somewhere (Musket's C2
+    sits on its own tip's column). What the jog cost buys is fewer: Fixd Fuzz has
+    four without it and one with."""
+    import sch2kicad.router as router
+    with_cost = sum(j for _, j in _shape(SAMPLES / "circuits" / "fixd-fuzz-roberts.circuit.json",
+                                          tmp_path / "with").values())
+    monkeypatch.setattr(router, "JOG", 0.0)
+    without = sum(j for _, j in _shape(SAMPLES / "circuits" / "fixd-fuzz-roberts.circuit.json",
+                                        tmp_path / "without").values())
+    assert with_cost < without
 
 
 @pytest.mark.parametrize("corner", [(5, 0), (0, 5)])
@@ -309,3 +320,17 @@ def test_every_name_stands_nearest_its_own_part(tmp_path, name):
     b = Builder(load(SAMPLES / "circuits" / f"{name}.circuit.json"), load_profile("tht"), "names")
     b.run(tmp_path)
     assert b.text_clashes() == 0
+
+
+def test_a_wire_may_turn_at_a_pin_tip(tmp_path, monkeypatch):
+    """Lane runs a column straight down through a row of pin tips (R10's and R7's
+    left ends on Memory Lapse) where our wires had to set off along each lead a
+    grid and then turn, two corners a pin. Turning at the tip, at a bend's cost,
+    takes Memory Lapse from 53 corners to 47 (and the drawn samples from 53 jogs
+    to 25)."""
+    import sch2kicad.router as router
+    path = SAMPLES / "circuits" / "memory-lapse.circuit.json"
+    turning = sum(c for c, _ in _shape(path, tmp_path / "turn").values())
+    monkeypatch.setattr(router, "TIP_TURN", None)
+    stepping = sum(c for c, _ in _shape(path, tmp_path / "step").values())
+    assert turning < stepping

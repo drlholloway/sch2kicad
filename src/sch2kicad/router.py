@@ -28,6 +28,13 @@ OFF_GUIDE = 0.25
 JOG_RUN, JOG = 3, 3.0
 # how many of a net's pins (nearest its middle first) a tree is tried from
 MAX_STARTS = 6
+# what a wire turning right at a pin's tip pays, rather than setting off along the
+# lead: a bend's worth (None forbids it). Lane runs a column straight down through
+# a row of pin tips; stepping out a grid first cost two corners a pin
+TIP_TURN: float | None = 2.0
+# and what coming into a tip from the side pays: free, one branch could take a tip
+# from the side and leave the next to kink round it (Musket's C2)
+TIP_ARRIVE = 1.0
 H, V = 1, 2
 DIRS = {(1, 0): H, (-1, 0): H, (0, 1): V, (0, -1): V}
 
@@ -98,6 +105,7 @@ class Router:
         self.box_owner: dict[Cell, set[str]] = {}    # which symbol bodies cover a cell
         self.pin_lines: set[Cell] = set()
         self.pin_net: dict[Cell, str] = {}           # pin tips
+        self.pin_out: dict[Cell, tuple[int, int]] = {}   # which way each tip's lead points
         self.occ: dict[Cell, dict[str, set[str]]] = {}   # cell -> net -> {"h","v","n"}
         self.soft: dict[Cell, float] = {}            # cosmetic cost (near other things)
         self.net_cells: dict[str, set[Cell]] = {}
@@ -131,6 +139,7 @@ class Router:
         """Pin tip belongs to ``net``; the pin's line back to the body is a wall."""
         c = grid_cell(tip, out)
         self.pin_net[c] = net or f"__nc__{c}"
+        self.pin_out[c] = out
         steps = int(round(length / GRID))
         for k in range(1, max(steps, 1) + 1):
             cell = (c[0] - out[0] * k, c[1] - out[1] * k)
@@ -247,7 +256,11 @@ class Router:
                 return path[::-1], gc
             crossing_here = c != start and self._crossing(net, c)
             for d in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                if inc == (0, 0) and first is not None and d != first:
+                # a wire sets off along the pin's own lead, or turns right at its tip
+                # for a bend's cost — Lane runs a column straight down through R10's
+                # and R7's tips, where stepping out a grid first cost two corners each
+                if inc == (0, 0) and first is not None and d != first and \
+                        (TIP_TURN is None or d == (-first[0], -first[1])):
                     continue
                 if inc != (0, 0) and d == (-inc[0], -inc[1]):
                     continue
@@ -264,13 +277,24 @@ class Router:
                     continue
                 cost = gc + 1.0 + self.soft.get(nc, 0.0)
                 turned = inc != (0, 0) and d != inc
+                tip_turn = inc == (0, 0) and first is not None and d != first
                 if turned:
                     cost += BEND + (JOG if run < JOG_RUN else 0.0)
+                elif tip_turn:
+                    cost += TIP_TURN                    # turning at the tip is a bend
+                after = 1 if (turned or tip_turn) else min(run + 1, JOG_RUN)
+                lead = self.pin_out.get(nc) if is_target else None
+                if lead and d not in (lead, (-lead[0], -lead[1])) and TIP_TURN is not None:
+                    # coming into a pin's tip from the side is the same bend as leaving it
+                    # that way — free, it let one branch of Musket's Q2 collector take C2's
+                    # tip from below and left the next to kink round it — and a grid or
+                    # two after another bend it is a jog
+                    cost += TIP_ARRIVE + (JOG if after < JOG_RUN and turned else 0.0)
                 if self._crossing(net, nc):
                     cost += CROSS
                 if guide and nc not in guide:
                     cost += OFF_GUIDE
-                ns = (nc, d, 1 if turned else min(run + 1, JOG_RUN))
+                ns = (nc, d, after)
                 if cost < g.get(ns, float("inf")):
                     g[ns] = cost
                     prev[ns] = state

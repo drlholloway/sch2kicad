@@ -90,8 +90,9 @@ def _near_parts(c: Circuit, refs: set[str], at) -> bool:
 
 def save_blocks(circuit_path: Path, out: Path | None = None, profile: str = "tht",
                 only: list[str] | None = None) -> list[Path]:
-    c = load(circuit_path)
+    from . import house
     prof = load_profile(profile)
+    c, _ = house.apply(load(circuit_path), prof.ports)
     out = out or circuit_path.parent / "blocks"
     paths = []
     for blk in c.blocks:

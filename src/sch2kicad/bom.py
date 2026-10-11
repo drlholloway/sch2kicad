@@ -323,6 +323,8 @@ def check(parts: dict[str, dict], rows: list, accept: dict[str, str] | None = No
     board = [r for r in map(_as_row, rows) if not r.hardware]
     res = Check(rows=len(board))
     by_ref = {ref.upper(): ref for ref in parts}
+    # house style renumbers (GAIN → VR1, R8 → R100); the list still says the drawing's ref
+    by_ref.update({p["was"].upper(): ref for ref, p in parts.items() if p.get("was")})
     by_label = {p.get("label", "").upper(): ref for ref, p in parts.items() if p.get("label")}
     seen: set[str] = set()
     missing: list[Row] = []

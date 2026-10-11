@@ -221,6 +221,28 @@ IN/OUT and the other pin to ground. A transistor whose lead order is not the hou
 order gets the stock KiCad symbol for its order on the same TO-92 footprint, so
 the board is right without bending leads.
 
+**House style** (Lane's hand edits of the Bulgarian Fuzz and Memory Lapse; both
+profiles). Write `circuit.json` as the drawing names things; the build renames
+on the sheet only, and says what it changed in a `house references:` note:
+
+- knobs become `VR1`, `VR2`... and toggles `SW1`, `SW2`..., in `circuit.json` order,
+  the knob name kept in the visible `Label`;
+- the supply is numbered from 100: `D100` the reverse-polarity diode, `D101` the status
+  LED, `R100` its resistor, then the supply's series parts, electrolytics and regulator
+  (`C100`, `C101`, `REG100`) in the order the supply runs through them;
+- with a 3PDT, a sheet with no status LED gets one (4K7 from the protected rail to a
+  RED LED on the SW lug, said in a note) — unless an LED pad is fed through a resistor
+  from a rail (Chuck's RLED to LED+): that LED is off the board and RLED is R100. A
+  pad named `CTRL` is the SW lug; loose ground pads go, and `JIN`/`JOUT` sockets are
+  wired to the array's JI and JO lugs;
+- the corner: the LED row (rail, R100, D101, SW and GND lugs) above the power row
+  (POWER socket, D100, rail caps, regulator), the jack sockets under the socket,
+  everything else below. A drawn sheet's supply moves there only when it reaches the
+  circuit by flags; one drawn as a wire into the circuit stays as drawn, and the jacks
+  stand in a column under the drawing's left side.
+
+The parts-list check still finds a renamed part by the drawing's ref (`R8` → `R100`).
+
 `smd`: 0805 passives, SMD electrolytics, SOT-23 transistors on B-E-C / D-S-G /
 G-S-D symbols (SOT-23 order, not TO-92 order), SOIC op-amps. Panel parts stay
 through-hole. Profiles live in `src/sch2kicad/data/profiles/*.toml`.

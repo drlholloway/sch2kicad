@@ -239,8 +239,12 @@ def test_with_no_true_bypass_the_jacks_come_in_on_sockets():
                           "Switch_Connectors1D": array + ({"4": "OUT"},),
                           "Switch_Connectors1B": array + ({"2": "GND"},),
                           "Switch_Connectors1C": array + ({"3": None},),
-                          "Switch_Connectors1E": array + ({"5": None},),
-                          "Switch_Connectors1F": array + ({"6": None},)}
+                          "Switch_Connectors1E": array + ({"5": "JIN"},),
+                          "Switch_Connectors1F": array + ({"6": "JOUT"},),
+                          # with a 3PDT the jacks come in on the same sockets, on JI and JO
+                          # (Lane's Bulgarian Fuzz and Memory Lapse)
+                          "J1": ("Conn_01x02_Socket_Jack_In", "JIN", {"1": "JIN", "2": "GND"}),
+                          "J2": ("Conn_01x02_Socket_Jack_Out", "JOUT", {"1": "JOUT", "2": "GND"})}
     assert pads(False) == {"J1": ("Conn_01x02_Socket_Jack_In", "JIN", {"1": "IN", "2": "GND"}),
                            "J2": ("Conn_01x02_Socket_Jack_Out", "JOUT", {"1": "OUT", "2": "GND"})}
     # a profile with no sockets still keeps the jacks off a 3PDT that is not there

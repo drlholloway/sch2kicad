@@ -132,13 +132,35 @@ def _port_parts(circuit: Circuit, profile: Profile, symbols: SymbolResolver) -> 
                                 footprint=sym.props.get("Footprint", ""), value=name, fields={},
                                 pinmap={"1": sym.pins_for(1)[0].number}))
     if used_array:
+        # the jacks come in on the house sockets, tip to the array's JI or JO lug and
+        # the other pin to ground, as Lane wires them (Bulgarian Fuzz, Memory Lapse)
+        socket_net: dict[str, str] = {}
+        all_jacks = {k.upper(): v for k, v in (cfg.get("jacks") or {}).items()}
+        names = set(circuit.all_net_names())
+        for key, lug in (("IN", "JI"), ("OUT", "JO")):
+            if lug in used_array or key not in all_jacks:
+                continue
+            sym = symbols.get(all_jacks[key])
+            by_name = {p.name.upper(): p.number for p in sym.pins_for(1)}
+            if not {"T", "R"} <= set(by_name):
+                continue
+            net = next(n for n in (f"J{key}", f"J{key}_TIP", f"J{key}_TIP2") if n not in names)
+            jack_n += 1
+            while f"J{jack_n}" in taken:
+                jack_n += 1
+            part = Part(ref=f"J{jack_n}", type="port", value=f"J{key}",
+                        pins={"T": PinRef("T", net, None), "R": PinRef("R", ground, None)})
+            out.append(Resolved(part=part, lib_id=all_jacks[key], symbol=sym, unit=1,
+                                footprint=sym.props.get("Footprint", ""), value=f"J{key}", fields={},
+                                pinmap={"T": by_name["T"], "R": by_name["R"]}))
+            socket_net[lug] = net
         # the array's other pads exist on the board whether or not the drawing uses them
         sym = symbols.get(array_id)
         for key, pin in array_pins.items():
             if key in used_array:
                 continue
             unit = sym.unit_of_pin(pin)
-            net = "GND" if key == "GND" else None
+            net = "GND" if key == "GND" else socket_net.get(key)
             part = Part(ref="Switch_Connectors1", type="port", unit=chr(ord("A") + unit - 1),
                         pins={"1": PinRef("1", net, None)})
             out.append(Resolved(part=part, lib_id=array_id, symbol=sym, unit=unit,
@@ -151,7 +173,7 @@ def _port_parts(circuit: Circuit, profile: Profile, symbols: SymbolResolver) -> 
 
 class Builder:
     def __init__(self, circuit: Circuit, profile: Profile, project: str, spacing: float = 1.15,
-                 ports_as: str = "pads", chains: bool = True):
+                 ports_as: str = "pads", chains: bool = True, house_notes: list[str] | None = None):
         self.c = circuit
         self.chains = chains
         self.profile = profile
@@ -169,6 +191,7 @@ class Builder:
         for r in self.resolved:
             self.problems += r.problems
             self.notes += r.notes
+        self.notes += house_notes or []
         self.layout = Layout(self.resolved, spacing=spacing)
         self.w = SchematicWriter(project)
         self.flag_items: dict[str, list[str]] = {}    # part key → uuids of flags/stubs attached to it
@@ -400,6 +423,7 @@ class Builder:
         self._pin_caps()
         self._give_room()
         self._power_row()
+        self._park_jacks()
         self._room_for_supply_rails()
         self._place_unplaced()
         self.w.paper = lay.sheet.paper
@@ -735,12 +759,12 @@ class Builder:
         that go from it to ground. Everything else keeps its arrangement and moves
         down, as a whole, if the row needs the room.
 
-        Only for a stripboard reading: on a drawn sheet the supply stays where its
-        designer drew it.
+        Above the row, the status LED: the rail through its resistor and the LED to
+        the 3PDT's SW lug, the GND lug beside it; under the socket, the JIN and JOUT
+        sockets with the JI and JO lugs at their tips. Lane moved the supply of a drawn
+        sheet (the Bulgarian Fuzz) into the same corner, so it is done on every sheet.
         """
         lay = self.layout
-        if not self.c.ours:
-            return
         sock = next((pl for pl in lay.placed if pl.res.part.type == "port" and pl.res.value == "POWER"
                      and "+" in pl.pinmap), None)
         if sock is None:
@@ -760,7 +784,9 @@ class Builder:
         while net and len(series) < 4:
             shunt, nxt = [], []
             for pl in lay.placed:
-                if id(pl) in used or pl.res.part.type == "port":
+                # a chip's power unit is two pins, one on ground, but no cap of the supply's:
+                # Pocket Comb draws IC1's and IC4's beside its regulator
+                if id(pl) in used or pl.res.part.type == "port" or pl.res.is_supply_unit:
                     continue
                 pins = [q.number for q in pl.pins()]
                 nets = {n: self.pin_net(pl, n) for n in pins}
@@ -788,6 +814,11 @@ class Builder:
             net = self.pin_net(pl, b)
         if not series:
             return
+        # a drawn sheet's supply goes to the corner only when it reaches the circuit by
+        # flags (Bulgarian Fuzz's +9V); one drawn as a wire into the circuit (Altered
+        # States' +8.76V) would leave that wire across the sheet
+        if not self.c.ours and not all(self._draw_as_flags(self.pin_net(pl, b)) for pl, _, b in series):
+            return
         group = [sock] + [pl for pl, _, _ in series] + [pl for sh in nodes for pl, _, _ in sh]
         old = {id(pl): (pl.orient, pl.origin) for pl in group}
         from .geometry import ORIENTS
@@ -809,6 +840,10 @@ class Builder:
         # the row, from x = 0, y = 0; moved into the corner afterwards. Each node gets
         # ``gap`` grid either side of each cap hanging from it, so a value never sits
         # on the next part's
+        # the row runs left to right from the socket's + pin, wherever the drawing
+        # turned the pad it replaces (Pocket Comb's comes down onto its bus)
+        self._orient_single_pin(sock, (sock.pin_pos(sock.pinmap["+"])[0] + 10, sock.pin_pos(sock.pinmap["+"])[1]),
+                                sock.pinmap["+"])
         put(sock, sock.pinmap["+"], (0.0, 0.0))
         x = 0.0
         step = gap * GRID
@@ -831,24 +866,34 @@ class Builder:
             x = pl.pin_pos(b)[0]
         if len(nodes) > len(series):
             hang_from(nodes[len(series)], x)
+        rail_x = series[0][0].pin_pos(series[0][2])[0]
+        group += self._led_row(rail_x + step, -8 * GRID, step, group)
+        jacks = self._jack_column(sock, group)
         # into the top left corner of what is already there, everything else out of its way
-        others = [pl for pl in lay.placed if pl not in group]
+        others = [pl for pl in lay.placed if pl not in group and pl not in jacks]
         ex = [pl.extent() for pl in group]
         gx0, gy0 = min(e[0] for e in ex), min(e[1] for e in ex)
         ox = [pl.extent() for pl in others] or ex
         cx, cy = snap(min(e[0] for e in ox)), snap(min(e[1] for e in ox))
         dx, dy0 = snap(cx - gx0), snap(cy - gy0)     # one shift for all, or each rounds its own way
-        for pl in group:
+        for pl in group + jacks:
             pl.origin = (round(pl.origin[0] + dx, 4), round(pl.origin[1] + dy0, 4))
         # a band of its own across the top: Lane leaves about eleven millimetres clear
         # under the supply before anything else starts, the Feedback block to its
-        # right included, where the row had been sharing its height
-        bottom = _union_all([pl.extent() for pl in group])[3] + band * GRID
-        top = min(pl.extent()[1] for pl in others) if others else bottom
-        if top < bottom:
-            dy = snap(bottom - top + GRID / 2)
-            for pl in others:
-                pl.origin = (pl.origin[0], snap(pl.origin[1] + dy))
+        # right included, where the row had been sharing its height. The jacks stand
+        # in the margin to the left of the circuit, below the band (Bulgarian Fuzz);
+        # where something is in their way, the band takes them in too.
+        for with_jacks in (False, True):
+            band_parts = group + (jacks if with_jacks else [])
+            bottom = _union_all([pl.extent() for pl in band_parts])[3] + band * GRID
+            top = min(pl.extent()[1] for pl in others) if others else bottom
+            if top < bottom:
+                dy = snap(bottom - top + GRID / 2)
+                for pl in others:
+                    pl.origin = (pl.origin[0], snap(pl.origin[1] + dy))
+            if not any(lay.conflicts(j, others, margin=2.54) for j in jacks):
+                break
+        group += jacks
         # each rail node on the row: one flag, on the pin that hangs below it
         for k, hang in enumerate(nodes):
             if not hang:
@@ -873,6 +918,128 @@ class Builder:
             for pl, g in downs:
                 self.flag_rows[f"{pl.res.ref}.{g}"] = line
         self._fit_sheet()
+
+    def _array_unit(self, key: str) -> Placed | None:
+        """The 3PDT pad array's unit for one lug (SW, GND, JI...)."""
+        pin = (self.profile.ports.get("array_pins") or {}).get(key)
+        return next((pl for pl in self._all() if pl.res.ref.startswith("Switch_Connectors")
+                     and pl.pinmap.get("1") == pin), None) if pin else None
+
+    def _all(self) -> list[Placed]:
+        """Placed or not yet: a part with no drawn position waits in ``unplaced``."""
+        return self.layout.placed + self.layout.unplaced
+
+    def _adopt(self, pl: Placed) -> None:
+        """Given a position here: no longer waiting to be parked."""
+        lay = self.layout
+        if pl in lay.unplaced:
+            lay.unplaced.remove(pl)
+            lay.placed.append(pl)
+
+    def _led_row(self, x: float, y: float, step: float, taken: list[Placed]) -> list[Placed]:
+        """The status LED's row above the supply: rail, resistor, LED, the SW lug and
+        the GND lug, left to right (Lane's Bulgarian Fuzz and Memory Lapse)."""
+        sw = self._array_unit("SW")
+        if sw is None:
+            return []
+        sw_net = self.pin_net(sw, sw.pinmap["1"])
+        led = next((pl for pl in self._all() if pl.res.part.type == "led" and pl not in taken
+                    and "K" in pl.pinmap and self.pin_net(pl, pl.pinmap["K"]) == sw_net), None)
+        if led is None:
+            return []
+        a_net = self.pin_net(led, led.pinmap["A"])
+        res = next((pl for pl in self._all() if pl.res.part.type == "resistor" and pl not in taken
+                    and a_net in {self.pin_net(pl, q.number) for q in pl.pins()}), None)
+        row: list[tuple[Placed, str, str]] = []
+        if res is not None:
+            a = next(q.number for q in res.pins() if self.pin_net(res, q.number) == a_net)
+            b = next(q.number for q in res.pins() if q.number != a)
+            row.append((res, b, a))
+        row.append((led, led.pinmap["A"], led.pinmap["K"]))
+        from .geometry import ORIENTS
+        old = {id(pl): (pl.orient, pl.origin) for pl, _, _ in row}
+        for pl, a, b in row:
+            for o in [pl.orient] + [o for o in ORIENTS if o != pl.orient]:
+                pl.orient = o
+                pa, pb = pl.pin_pos(a), pl.pin_pos(b)
+                if abs(pa[1] - pb[1]) < 1e-3 and pb[0] > pa[0]:
+                    break
+            else:
+                for p2, _, _ in row:
+                    p2.orient, p2.origin = old[id(p2)]
+                return []
+            now = pl.pin_pos(a)
+            pl.origin = (snap(pl.origin[0] + x - now[0]), snap(pl.origin[1] + y - now[1]))
+            x = pl.pin_pos(b)[0] + step
+        placed = [pl for pl, _, _ in row]
+        k_at = led.pin_pos(led.pinmap["K"])
+        for unit, at in ((sw, (x, y)), (self._array_unit("GND"), (x + 2 * step, y))):
+            if unit is None:
+                continue
+            self._put_lug(unit, at, (-1, 0))
+            placed.append(unit)
+        del k_at
+        for pl in placed:
+            self._adopt(pl)
+        return placed
+
+    def _put_lug(self, unit: Placed, at, out) -> None:
+        """A one-pin lug with its pin end at ``at``, its lead leaving toward ``out``."""
+        pin = unit.pinmap["1"]
+        for _ in range(2):
+            now = unit.pin_pos(pin)
+            unit.origin = (snap(unit.origin[0] + at[0] - now[0]), snap(unit.origin[1] + at[1] - now[1]))
+            self._orient_single_pin(unit, (at[0] + out[0] * 5 * GRID, at[1] + out[1] * 5 * GRID), pin)
+
+    def _jack_column(self, sock: Placed | None, taken: list[Placed], tip=None) -> list[Placed]:
+        """JIN and JOUT under the power socket, turned the same way, each with its
+        array lug just past its tip (Lane's Bulgarian Fuzz); with no socket, from ``tip``."""
+        out: list[Placed] = []
+        tip = sock.pin_pos(sock.pinmap["+"]) if sock is not None else tip
+        for k, (value, lug) in enumerate((("JIN", "JI"), ("JOUT", "JO"))):
+            jack = next((pl for pl in self._all() if pl.res.part.type == "port" and pl.res.value == value
+                         and "T" in pl.pinmap and pl not in taken), None)
+            if jack is None:
+                continue
+            if sock is not None:
+                jack.orient = sock.orient
+            else:
+                self._orient_single_pin(jack, (jack.pin_pos(jack.pinmap["T"])[0] + 10,
+                                               jack.pin_pos(jack.pinmap["T"])[1]), jack.pinmap["T"])
+            at = (tip[0], tip[1] + (9 + 8 * k) * GRID)
+            now = jack.pin_pos(jack.pinmap["T"])
+            jack.origin = (snap(jack.origin[0] + at[0] - now[0]), snap(jack.origin[1] + at[1] - now[1]))
+            out.append(jack)
+            unit = self._array_unit(lug)
+            if unit is not None and self.pin_net(unit, unit.pinmap["1"]) == self.pin_net(jack, jack.pinmap["T"]):
+                d = jack.pin_dir(jack.pinmap["T"])
+                self._put_lug(unit, (at[0] + d[0] * 4 * GRID, at[1] + d[1] * 4 * GRID), (-d[0], -d[1]))
+                out.append(unit)
+        # each socket's ground pin its own flag, as Lane draws them, not one flag for
+        # the pair wired round the JO lug
+        for jack in out:
+            if "R" in jack.pinmap:
+                g = self.pin_net(jack, jack.pinmap["R"])
+                self.power_nodes.setdefault(g, {})[f"{jack.res.ref}.{jack.pinmap['R']}"] = "lead"
+        for pl in out:
+            self._adopt(pl)
+        return out
+
+    def _park_jacks(self) -> None:
+        """Jack sockets the corner did not take (a supply drawn as a wire stays where it
+        is drawn): their own column under the drawing's left side, clear of everything."""
+        lay = self.layout
+        if not any(pl.res.value in ("JIN", "JOUT") and pl in lay.unplaced for pl in lay.unplaced):
+            return
+        bx0, _, _, by1 = lay.bounds()
+        for shift in range(0, 60, 2):
+            tip = (snap(bx0 + 7.62), snap(by1 + 2 * GRID + shift * GRID))   # under the ground flags
+            group = self._jack_column(None, [], tip)
+            if not group:
+                return
+            others = [pl for pl in lay.placed if pl not in group]
+            if not any(lay.conflicts(pl, others, margin=2.54) for pl in group):
+                return
 
     def _stand(self, pl: Placed, up: str, down: str) -> bool:
         """Stand a two-pin part upright, ``up`` on top and ``down`` below."""
@@ -1617,9 +1784,10 @@ class Builder:
         pending = []
         for port in self.label_ports:
             ts = terms.get(port.net, [])
-            if not ts or port.at is None:
+            if not ts:
                 continue
-            want = self.layout.to_sheet(port.at)
+            # a net the drawing never drew (house style's status LED) leaves by its first pin
+            want = self.layout.to_sheet(port.at) if port.at is not None else ts[0].pos
             near = min(ts, key=lambda t: math.dist(t.pos, want))
             # just off that pin, pointing away from the part: a block is spread out to fit
             # its symbols, so where the net leaves it in the source says little
@@ -2078,6 +2246,12 @@ class Builder:
                 self.w.text("?", (snap(p[0], 0.635), snap(p[1], 0.635)), size=2.0, color=RED, bold=True)
             self.w.text(label, (snap(bx0), y), size=1.27, color=RED, justify=("left", "top"))
             y += 2.54
+        # the notes go under everything, so a supply moved into the corner (house style)
+        # can push them off a page that fitted the parts alone
+        ux0, uy0, ux1, uy1 = lay.sheet.usable
+        if y > uy1:
+            lay.sheet = choose_sheet(max(bx1, ux1) - ux0 + 10, y - uy0 + 10)
+            self.w.paper = lay.sheet.paper
 
     # .............................................................. groups
     def _groups(self, terms: dict[str, list[Terminal]]) -> None:
@@ -2250,11 +2424,13 @@ def _kicad_resave(sch: Path) -> None:
 
 def build(circuit_path: Path, out_dir: Path, profile: str = "tht", name: str | None = None,
           spacing: float = 1.15) -> BuildResult:
+    from . import house
     circuit = load(circuit_path)
     prof = load_profile(profile)
     project = safe_name(name or circuit.name)
     if not circuit.ours:
-        b = Builder(circuit, prof, project, spacing=spacing)
+        circuit, hn = house.apply(circuit, prof.ports)
+        b = Builder(circuit, prof, project, spacing=spacing, house_notes=hn)
         result = b.run(out_dir)
         write_build_json(b, result, circuit_path, out_dir)
         return result
@@ -2268,7 +2444,8 @@ def build(circuit_path: Path, out_dir: Path, profile: str = "tht", name: str | N
     with tempfile.TemporaryDirectory() as tmp:
         for chains in (True, False):
             where = Path(tmp) / ("runs" if chains else "plain")
-            b = Builder(load(circuit_path), prof, project, spacing=spacing, chains=chains)
+            hc, hn = house.apply(load(circuit_path), prof.ports)
+            b = Builder(hc, prof, project, spacing=spacing, chains=chains, house_notes=hn)
             result = b.run(where)
             tries.append((b.untidiness(), not chains, b, result, where))
         _, _, b, result, where = min(tries, key=lambda t: t[:2])
@@ -2305,7 +2482,9 @@ def write_build_json(b: "Builder", result: BuildResult, circuit_path: Path, out_
     if b.c.bom:
         # verify compares the values KiCad reports for these parts with the doc's parts list
         meta["bom"] = {"rows": b.c.bom, "accept": b.c.bom_accept,
-                       "parts": {p.ref: {"type": p.type, "label": p.label} for p in b.c.parts}}
+                       "parts": {p.ref: {"type": p.type, "label": p.label,
+                                         **({"was": b.c.renamed[p.ref]} if p.ref in b.c.renamed else {})}
+                                 for p in b.c.parts if p.ref not in b.c.added}}
     work = out_dir / "sch2kicad"
     work.mkdir(exist_ok=True)
     (work / "build.json").write_text(json.dumps(meta, indent=2) + "\n")

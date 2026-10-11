@@ -66,7 +66,9 @@ deliberately unconnected and gets a no-connect flag.
 ## Part fields
 
 - `ref` — as printed (`R1`, `VR3`, `RLED`, `CLR`). PedalPCB names pots by their
-  knob (`PRE`, `TONE`) and the status LED `LED`; use those as the ref. Multi-unit
+  knob (`PRE`, `TONE`) and the status LED `LED`; use those as the ref. The build
+  renames to house style on the sheet (`TONE` → `VR2` with `TONE` as its Label, the
+  supply from `D100`; see SKILL.md), never in `circuit.json`. Multi-unit
   ICs share a ref and differ by `unit` (`U1` + `"unit": "A"`), however the
   source spells it (`U1A`, `IC1.1`).
 - `value` — exactly as printed; pots keep their taper letter (`A100K`, `B50K`, `C10K`).

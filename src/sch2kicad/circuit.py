@@ -112,6 +112,9 @@ class Circuit:
     # of a drawing: a stripboard reading's designer version (final/), which no longer
     # matches its board. A reading with a board is ours already.
     arrangement: str = ""
+    # set by house style (house.py): new ref → the reading's ref, and the parts it added
+    renamed: dict[str, str] = field(default_factory=dict)
+    added: list[str] = field(default_factory=list)
 
     @property
     def ours(self) -> bool:

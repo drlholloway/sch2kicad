@@ -196,14 +196,22 @@ a drawn sheet follows its drawing instead:
   tidier kept: a straightened run can leave a part's other end a grid off what it
   joins.
 - **A part bridging two pins on one side of a chip** (PT2399's filter caps) stands
-  just off the chip between them, parallel to its side.
+  just off the chip between them, parallel to its side, its end level with the pin
+  whose net goes on (C9 on pin 12, which runs on to R11).
+- **A pot stands with a tip on the row it joins**: VOLUME's end pin on R12's row,
+  DELAY's on R1's; a pad level with its wiper moves with it.
 - **Grounds in one block** within a few grid of each other end level, there being
   no drawing to give a baseline.
 - **A run starts with what hangs off its pin and ends at a pad**: R2 up to VCC
   comes onto LM386 pin 2's line first, and the IN pad slides level with it, so the
   input runs straight in as the output runs straight out.
-- **Side-by-side parts keep five grid between their axes**, room for a name between
-  them (PT2399's R6, R8, R11), even where that costs a straight line to a pin.
+- **Side-by-side parts are spread only where a name goes between them**: a stack
+  (PT2399's R6, R8, R11 with R10, R7 above) puts each name above its part, the
+  ends' outward, and keeps three grid between axes with no name in the gap, five
+  with one, seven with two. Of every way, the one that moves the least, a part
+  lined up with its pin counting triple, the moves split rather than one doubled:
+  R11 keeps pin 12's row, R8 and R6 step a grid each (Lane's own). The names are
+  then placed on the side the room was made on.
 - The tidier of the two builds is judged on labels too: one on another label or a
   body, or nearer another part than its own, counts against it.
 

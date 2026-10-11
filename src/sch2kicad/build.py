@@ -588,7 +588,7 @@ class Builder:
         if self.open_on_power:
             self.notes.append(
                 "the house transistor symbols call collector and emitter open drivers, which "
-                "KiCad's default ERC reads as a conflict with the PWR_FLAG on "
+                "KiCad's default ERC reads as a conflict with the PWR_FLAG or regulator output on "
                 f"{', '.join(sorted(self.open_on_power))}; the project's ERC matrix allows that "
                 "one pair, so a grounded emitter is not an error")
         self._texts()
@@ -2144,6 +2144,10 @@ class Builder:
                     # PWR_FLAG this net needs — which every grounded emitter and every
                     # collector on the supply would raise
                     self.open_on_power.add(net)
+            elif types & OPEN_PINS and "power_out" in types:
+                # a regulator's output is the same conflict to KiCad: a collector on the
+                # rail a 78L05 drives (the Powerglide's speed indicator)
+                self.open_on_power.add(net)
         if not need:
             return
         pwr = self.symbols.get(self.profile.pwr_flag)

@@ -1013,7 +1013,8 @@ class Builder:
             unit = self._array_unit(lug)
             if unit is not None and self.pin_net(unit, unit.pinmap["1"]) == self.pin_net(jack, jack.pinmap["T"]):
                 d = jack.pin_dir(jack.pinmap["T"])
-                self._put_lug(unit, (at[0] + d[0] * 4 * GRID, at[1] + d[1] * 4 * GRID), (-d[0], -d[1]))
+                # far enough out that the ground lying along pin 2 clears it (Lane's sockets)
+                self._put_lug(unit, (at[0] + d[0] * 8 * GRID, at[1] + d[1] * 8 * GRID), (-d[0], -d[1]))
                 out.append(unit)
         # each socket's ground pin its own flag, as Lane draws them, not one flag for
         # the pair wired round the JO lug
@@ -1873,6 +1874,15 @@ class Builder:
 
         near, far = (2.54, 3.81, 5.08), (2.54, 3.81, 5.08, 7.62)
         cands = []
+        if pl is not None and pl.res.part.type == "port" and pl.res.value in ("JIN", "JOUT") \
+                and self.c.net_kind(net) == "ground" and t.out[1] == 0:
+            # a jack socket's ground pin: the symbol turned to lie along the pin, at the
+            # end of a short lead, the way Lane draws both
+            # sockets (Bulgarian Fuzz, Memory Lapse) — the one place a ground lies down
+            for o in (Orient(a, None) for a in (0, 90, 180, 270)):
+                bd = apply(o.m, *body_lib)
+                if (round(bd[0]), round(bd[1])) == t.out:
+                    cands += [([t.pos, pt(t.pos, t.out, s1)], o) for s1 in (2.54, 3.81, 5.08)]
         row = self.flag_rows.get(t.owner)
         if row is not None and t.out == up_dir:   # down to the line the drawing stands its flags on
             axis = 0 if t.out[0] else 1

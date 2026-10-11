@@ -94,7 +94,8 @@ def test_the_parts_list_still_finds_a_renamed_part():
 
 def test_power_led_and_jacks_stand_in_the_top_left_corner(tmp_path):
     """Lane's corner: the LED row (rail, R100, D101, SW lug, GND lug) above the power
-    row, JIN and JOUT under the POWER socket with JI and JO at their tips."""
+    row, JIN and JOUT under the POWER socket with JI and JO at their tips, each
+    socket's ground lying along its pin 2."""
     prof = load_profile("tht")
     c, hn = house.apply(load(SAMPLES / "circuits" / "memory-lapse.circuit.json"), prof.ports)
     b = Builder(c, prof, "corner", house_notes=hn)
@@ -114,6 +115,12 @@ def test_power_led_and_jacks_stand_in_the_top_left_corner(tmp_path):
     assert row_y < jin.pin_pos(jin.pinmap["T"])[1] < jout.pin_pos(jout.pinmap["T"])[1]
     ji = next(pl for pl in b.layout.placed if pl.res.ref.startswith("Switch") and pl.pinmap["1"] == "5")
     assert ji.pin_pos("5")[1] == jin.pin_pos(jin.pinmap["T"])[1]
+    # each socket's ground lies along its pin 2, level with it (Lane's sockets)
+    for jack in (jin, jout):
+        r = jack.pin_pos(jack.pinmap["R"])
+        g = [sy for sy in b.w.symbols if sy.lib.lib_id.endswith(":GND")
+             and abs(sy.at[1] - r[1]) < 1e-3 and 0 < sy.at[0] - r[0] <= 5.08]
+        assert len(g) == 1 and g[0].orient.angle in (90, 270), jack.res.ref
     # everything else below the corner's rows
     rest = [pl for pl in b.layout.placed if pl.res.part.type != "port" and pl.res.ref not in
             ("D100", "D101", "R100", "REG100", "C100", "C101") and not pl.res.is_supply_unit]

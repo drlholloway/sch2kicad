@@ -236,7 +236,8 @@ on the sheet only, and says what it changed in a `house references:` note:
   pad named `CTRL` is the SW lug; loose ground pads go, and `JIN`/`JOUT` sockets are
   wired to the array's JI and JO lugs;
 - the corner: the LED row (rail, R100, D101, SW and GND lugs) above the power row
-  (POWER socket, D100, rail caps, regulator), the jack sockets under the socket,
+  (POWER socket, D100, rail caps, regulator), the jack sockets under the socket
+  (each one's ground symbol lying along its pin 2, the one ground that lies down),
   everything else below. A drawn sheet's supply moves there only when it reaches the
   circuit by flags; one drawn as a wire into the circuit stays as drawn, and the jacks
   stand in a column under the drawing's left side.

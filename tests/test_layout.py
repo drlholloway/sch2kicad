@@ -401,7 +401,8 @@ def test_every_flag_stands_upright(tmp_path, circuit):
     Turning a flag to face its pin was the first pass's last resort, and it took it
     six times across the samples — the Tri-Vibe's VB arrow pointing down beside D3,
     two grounds apiece standing upside down on the Higgs and the Theremin. Every one
-    of those pins had a flag of its own rail close enough to wire to instead.
+    of those pins had a flag of its own rail close enough to wire to instead. The
+    one ground that lies down is a jack socket's, along its pin 2.
     """
     root = sexpr.parse(build(circuit, tmp_path / "board").sch.read_text())
     wires = []
@@ -417,7 +418,19 @@ def test_every_flag_stands_upright(tmp_path, circuit):
         return f[0] == "GND" and abs(f[3]) == 180 and any(
             abs(a[1] - b[1]) < 1e-3 and math.dist(a, b) <= 3 * 2.54 + 1e-3 and
             (math.dist(a, at) < 1e-3 or math.dist(b, at) < 1e-3) for a, b in wires)
-    assert [f for f in _flags(root) if f[3] != 0 and not short_lead(f)] == []
+    jacks = [(_num(at[1]), _num(at[2])) for sym in sexpr.children(root, "symbol")
+             if "Socket_Jack" in str((sexpr.child(sym, "lib_id") or ["", ""])[1])
+             for at in [sexpr.child(sym, "at")]]
+
+    def jack_ground(f) -> bool:
+        """A jack socket's ground lying along its pin 2 at the end of a short lead: how
+        Lane draws JIN and JOUT (Bulgarian Fuzz, Memory Lapse), and allowed for that alone."""
+        at = (f[1], f[2])
+        return f[0] == "GND" and abs(f[3]) in (90, 270) and any(
+            abs(a[1] - b[1]) < 1e-3 and math.dist(a, b) <= 2 * 2.54 + 1e-3 and
+            any(math.dist(p, at) < 1e-3 for p in (a, b)) and
+            any(math.dist(p, j) <= 8 for p in (a, b) for j in jacks) for a, b in wires)
+    assert [f for f in _flags(root) if f[3] != 0 and not short_lead(f) and not jack_ground(f)] == []
 
 
 @pytest.mark.parametrize("circuit", SAMPLES, ids=lambda p: p.name.split(".")[0])

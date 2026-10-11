@@ -373,7 +373,8 @@ def check(parts: dict[str, dict], rows: list, accept: dict[str, str] | None = No
 
     for r in missing:
         report([r.ref], f"{r.ref} ({r.value}, {r.type}) is in the parts list but not in the drawing", "problem")
-    for ref in extra:
+    # a status LED house style added is not in the drawing, so a list that leaves it out is right
+    for ref in (r for r in extra if not parts[r].get("added")):
         report([ref], f"{ref} ({parts[ref].get('value')}) is in the drawing but not in the parts list", "warning")
     return res
 

@@ -92,6 +92,15 @@ def test_the_parts_list_still_finds_a_renamed_part():
     assert chk.matched == 2 and not chk.problems and not chk.warnings
 
 
+
+def test_the_parts_list_finds_an_added_status_led():
+    """Sub Octave's list has the LED resistor as R100 4K7 and no LED: house style's
+    R100 meets its row, and the added D101 is not a part the list forgot."""
+    parts = {"R100": {"value": "4K7", "type": "resistor", "added": True},
+             "D101": {"value": "RED", "type": "led", "added": True}}
+    chk = bom.check(parts, [{"ref": "R100", "value": "4K7", "type": "Resistor, 1/4W"}])
+    assert chk.matched == 1 and not chk.problems and not chk.warnings
+
 def test_power_led_and_jacks_stand_in_the_top_left_corner(tmp_path):
     """Lane's corner: the LED row (rail, R100, D101, SW lug, GND lug) above the power
     row, JIN and JOUT under the POWER socket with JI and JO at their tips, each

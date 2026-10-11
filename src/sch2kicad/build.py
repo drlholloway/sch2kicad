@@ -2493,8 +2493,9 @@ def write_build_json(b: "Builder", result: BuildResult, circuit_path: Path, out_
         # verify compares the values KiCad reports for these parts with the doc's parts list
         meta["bom"] = {"rows": b.c.bom, "accept": b.c.bom_accept,
                        "parts": {p.ref: {"type": p.type, "label": p.label,
-                                         **({"was": b.c.renamed[p.ref]} if p.ref in b.c.renamed else {})}
-                                 for p in b.c.parts if p.ref not in b.c.added}}
+                                         **({"was": b.c.renamed[p.ref]} if p.ref in b.c.renamed else {}),
+                                         **({"added": True} if p.ref in b.c.added else {})}
+                                 for p in b.c.parts}}
     work = out_dir / "sch2kicad"
     work.mkdir(exist_ok=True)
     (work / "build.json").write_text(json.dumps(meta, indent=2) + "\n")

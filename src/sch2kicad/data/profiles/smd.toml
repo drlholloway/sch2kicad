@@ -132,6 +132,9 @@ other = "2025_PedalDivision_Flags:VCC"
 
 [ports]
 array = "2025_PedalDivision_SignalPads:3pdt_Switch_Connectors+Jacks"
+# where the drawing shows no jacks, the plain array: the jacks wire to the footswitch
+# off the board, as on Lane's Colonel Angus (October 2026)
+array_no_jacks = "2025_PedalDivision_SignalPads:3pdt_Switch_Connectors"
 array_pins = { IN = "1", GND = "2", SW = "3", OUT = "4", JI = "5", JO = "6" }
 aliases = { INPUT = "IN", "IN+" = "IN", OUTPUT = "OUT", "OUT+" = "OUT", CTRL = "SW" }
 pad = "2025_PedalDivision_SignalPads:Small_Pad_Round"

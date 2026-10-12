@@ -124,6 +124,11 @@ Unlisted nets are signals. List only what needs a kind:
   then come in on the house jack sockets (`JIN`/`JOUT`: tip to the signal, the other
   pin to ground), with no 3PDT array and no separate jack ground pad. Bring the
   footswitch out as a pad per lug it uses, named for the lug (`FOOTSW 2`).
+- `jacks` — whether the drawing shows the jacks. Leave it out: it is read from the
+  ports, true when one is a jack pad (`JI`, `JO`, `J_IN`) or a jack's ground pad
+  (`GNDJ1`). With jacks the 3PDT array is the `+Jacks` one and the jacks come in on
+  `JIN`/`JOUT` sockets; without, the plain array and no sockets. Set it when the
+  drawing shows its jacks some other way (a drawn jack symbol read as IN/OUT ports).
 - `arrangement` — `"ours"` when the positions are a schematic drawn for the reading,
   not pixels of a drawing (a stripboard reading's `final/` copy; a reading with a
   `"board"` is ours already). Nothing then traces its image, and it is laid out by

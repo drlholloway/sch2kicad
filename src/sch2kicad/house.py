@@ -11,7 +11,8 @@ same five things to both sheets, none of which changes a connection the reading 
 - a status LED, from the protected supply through 4K7 to the 3PDT's SW lug, where the
   drawing has none (the Memory Lapse's layout has none; Lane added it);
 - the loose ground pads (GND, GNDL, GNDJ1...) go: the 3PDT array has a GND lug, and
-  the jacks come in on sockets (``_port_parts``), each with its ground pin.
+  the jacks come in on sockets (``_port_parts``), each with its ground pin, or, where
+  the drawing shows no jacks, wire to the footswitch off the board (the plain array).
 
 The reading on disk is not touched: the drawing and board checks read it as it is.
 """
@@ -128,7 +129,8 @@ def apply(c: Circuit, ports: dict | None = None) -> tuple[Circuit, list[str]]:
         if loose:
             c.ports = [p for p in c.ports if p not in loose]
             notes.append(f"ground pad{'s' if len(loose) > 1 else ''} {', '.join(p.name for p in loose)} "
-                         f"left off (house style): the 3PDT array's GND lug and the jack sockets carry ground")
+                         f"left off (house style): the 3PDT array's GND lug"
+                         + (" and the jack sockets carry ground" if c.jacks else " carries ground"))
 
     # new references
     renames: dict[str, str] = {}

@@ -215,7 +215,11 @@ Format, workflow and the Dirtbox style:
 `TH_Electrolytic_Cap`, `16mm_Alpha_style` pots with the knob name in `Label`,
 `TH_NPN`/`TH_PNP` (E-B-C), `TH_JFET` (D-S-G), `TH_Op_amp_Dual`,
 `TH_Op_amp_Quad` (V+ on 4, V- on 11), the 3PDT pad array for IN/OUT/GND and
-loose pads for everything else. A circuit with no true bypass (`"true_bypass":
+loose pads for everything else. The array is the plain `3pdt_Switch_Connectors`
+(IN, GND, SW, OUT; the jacks wire to the footswitch off the board) unless the
+drawing shows its jacks — a `JI`/`JO` pad or a jack's own ground pad (`GNDJ1`) —
+when it is `3pdt_Switch_Connectors+Jacks` with the jacks on `JIN`/`JOUT` sockets
+(Lane, Colonel Angus). `"jacks": true/false` in circuit.json overrides the guess. A circuit with no true bypass (`"true_bypass":
 false`) brings its jacks in on the house `JIN`/`JOUT` sockets instead, tip to
 IN/OUT and the other pin to ground. A transistor whose lead order is not the house
 order gets the stock KiCad symbol for its order on the same TO-92 footprint, so

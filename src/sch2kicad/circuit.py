@@ -19,6 +19,9 @@ SCHEMA = "sch2kicad/circuit@1"
 NC = "NC"  # a pin deliberately left unconnected
 
 
+# a port that is a jack, or a jack's own ground: JI, JO, J_IN, JOUT, JACK IN, GNDJ1...
+JACK_PORT = re.compile(r"^(J_?(I|O|IN|OUT)|(IN|OUT)(PUT)?[ _]?JACK|JACK.*|GND_?J\w*)$", re.I)
+
 @dataclass
 class PinRef:
     name: str            # semantic pin name as written in circuit.json
@@ -105,6 +108,11 @@ class Circuit:
     # false when no 3PDT switches the jacks (buffered or JFET-switched bypass): IN and
     # OUT then get pads of their own instead of the 3PDT pad array
     true_bypass: bool = True
+    # the drawing shows the jacks (a jack pad, a jack's own ground pad): the 3PDT array
+    # then has JI/JO lugs and the jacks come in on sockets. With none, Lane's boards take
+    # the plain array (IN, GND, SW, OUT) and the jacks wire to the footswitch off the board.
+    # Read from the ports unless circuit.json says "jacks".
+    jacks: bool = False
     # a stripboard layout this schematic was drawn from (board.json, beside circuit.json):
     # verify checks the schematic connects exactly what the board connects
     board: str = ""
@@ -234,6 +242,8 @@ def from_dict(data: dict) -> Circuit:
                    bom=[dict(r) for r in data.get("bom") or []],
                    bom_accept={str(k): str(v) for k, v in (data.get("bom_accept") or {}).items()},
                    true_bypass=bool(data.get("true_bypass", True)),
+                   jacks=bool(data["jacks"]) if "jacks" in data else any(
+                       JACK_PORT.match(p.name.strip()) for p in ports),
                    board=str(data.get("board") or ""),
                    arrangement=str(data.get("arrangement") or ""))
 

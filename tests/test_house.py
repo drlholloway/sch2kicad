@@ -106,7 +106,9 @@ def test_power_led_and_jacks_stand_in_the_top_left_corner(tmp_path):
     row, JIN and JOUT under the POWER socket with JI and JO at their tips, each
     socket's ground lying along its pin 2."""
     prof = load_profile("tht")
-    c, hn = house.apply(load(SAMPLES / "circuits" / "memory-lapse.circuit.json"), prof.ports)
+    ml = load(SAMPLES / "circuits" / "memory-lapse.circuit.json")
+    ml.jacks = True                    # its layout shows none; the sockets come with jacks
+    c, hn = house.apply(ml, prof.ports)
     b = Builder(c, prof, "corner", house_notes=hn)
     b.run(tmp_path)
     at = {pl.res.ref: pl for pl in b.layout.placed if not pl.res.ref.startswith("Switch")}

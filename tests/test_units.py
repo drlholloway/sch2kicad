@@ -220,8 +220,8 @@ def test_with_no_true_bypass_the_jacks_come_in_on_sockets():
     from sch2kicad.parts import load_profile
     from sch2kicad.symlib import SymbolResolver
 
-    def pads(true_bypass: bool, sockets: bool = True) -> dict[str, tuple]:
-        circuit = from_dict({"schema": "sch2kicad/circuit@1", "name": "t", "parts": [],
+    def pads(true_bypass: bool, sockets: bool = True, jacks: bool = True) -> dict[str, tuple]:
+        circuit = from_dict({"schema": "sch2kicad/circuit@1", "name": "t", "parts": [], "jacks": jacks,
                              "true_bypass": true_bypass, "nets": {"GND": {"kind": "ground"}},
                              "ports": [{"name": "IN", "net": "IN", "at": [0, 0]},
                                        {"name": "OUTPUT", "net": "OUT", "at": [50, 0]}]})
@@ -245,11 +245,33 @@ def test_with_no_true_bypass_the_jacks_come_in_on_sockets():
                           # (Lane's Bulgarian Fuzz and Memory Lapse)
                           "J1": ("Conn_01x02_Socket_Jack_In", "JIN", {"1": "JIN", "2": "GND"}),
                           "J2": ("Conn_01x02_Socket_Jack_Out", "JOUT", {"1": "JOUT", "2": "GND"})}
+    # where the drawing shows no jacks, the plain array: the jacks wire to the footswitch
+    # off the board, with no JI/JO lugs and no sockets (Lane's Colonel Angus)
+    plain = ("3pdt_Switch_Connectors", "")
+    assert pads(True, jacks=False) == {"Switch_Connectors1A": plain + ({"1": "IN"},),
+                                       "Switch_Connectors1D": plain + ({"4": "OUT"},),
+                                       "Switch_Connectors1B": plain + ({"2": "GND"},),
+                                       "Switch_Connectors1C": plain + ({"3": None},)}
     assert pads(False) == {"J1": ("Conn_01x02_Socket_Jack_In", "JIN", {"1": "IN", "2": "GND"}),
                            "J2": ("Conn_01x02_Socket_Jack_Out", "JOUT", {"1": "OUT", "2": "GND"})}
     # a profile with no sockets still keeps the jacks off a 3PDT that is not there
     assert pads(False, sockets=False) == {"H1": ("Small_Pad_Round", "IN", {"1": "IN"}),
                                           "H2": ("Small_Pad_Round", "OUTPUT", {"1": "OUT"})}
+
+
+def test_a_drawing_shows_its_jacks_by_a_jack_pad():
+    """A JI or JO pad, or a jack's own ground pad (the Bulgarian Fuzz's GNDJ1), says the
+    drawing has jacks; IN, OUT, a plain GND or a LED+ pad does not. circuit.json can say."""
+    from sch2kicad.circuit import from_dict
+
+    def jacks(*names, **extra):
+        return from_dict({"schema": "sch2kicad/circuit@1", "name": "t", "parts": [], **extra,
+                          "ports": [{"name": n, "net": n, "at": [0, 0]} for n in names]}).jacks
+
+    for shown in ("JI", "JO", "J_IN", "J_OUT", "GNDJ1", "GNDJ", "JACK IN", "INPUT JACK"):
+        assert jacks("IN", "OUT", shown), shown
+    assert not jacks("IN", "OUT", "GND", "GNDL", "LED+", "9V", "SW")
+    assert jacks("IN", "OUT", jacks=True) and not jacks("JI", jacks=False)
 
 
 def test_a_pot_value_nobody_stocks_is_said_out_loud():

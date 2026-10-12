@@ -67,6 +67,12 @@ def _port_parts(circuit: Circuit, profile: Profile, symbols: SymbolResolver) -> 
     array_id = cfg.get("array") if circuit.true_bypass else None
     jacks = {} if circuit.true_bypass else {k.upper(): v for k, v in (cfg.get("jacks") or {}).items()}
     array_pins = {k.upper(): v for k, v in (cfg.get("array_pins") or {}).items()}
+    # a drawing with no jacks takes the plain array, whose jacks wire to the footswitch
+    # off the board: no JI/JO lugs, no sockets for them
+    if array_id and not circuit.jacks and cfg.get("array_no_jacks"):
+        array_id = cfg["array_no_jacks"]
+        plain = {p.number for p in symbols.get(array_id).pins}
+        array_pins = {k: v for k, v in array_pins.items() if v in plain}
     aliases = {k.upper(): v.upper() for k, v in (cfg.get("aliases") or {}).items()}
     ground = next((n for n in circuit.nets if circuit.net_kind(n) == "ground"), "GND")
     taken = {p.ref for p in circuit.parts}
@@ -131,10 +137,10 @@ def _port_parts(circuit: Circuit, profile: Profile, symbols: SymbolResolver) -> 
             out.append(Resolved(part=part, lib_id=lib_id, symbol=sym, unit=1,
                                 footprint=sym.props.get("Footprint", ""), value=name, fields={},
                                 pinmap={"1": sym.pins_for(1)[0].number}))
-    if used_array:
+    socket_net: dict[str, str] = {}
+    if used_array and circuit.jacks:
         # the jacks come in on the house sockets, tip to the array's JI or JO lug and
-        # the other pin to ground, as Lane wires them (Bulgarian Fuzz, Memory Lapse)
-        socket_net: dict[str, str] = {}
+        # the other pin to ground, as Lane wires them (Bulgarian Fuzz)
         all_jacks = {k.upper(): v for k, v in (cfg.get("jacks") or {}).items()}
         names = set(circuit.all_net_names())
         for key, lug in (("IN", "JI"), ("OUT", "JO")):
@@ -154,6 +160,7 @@ def _port_parts(circuit: Circuit, profile: Profile, symbols: SymbolResolver) -> 
                                 footprint=sym.props.get("Footprint", ""), value=f"J{key}", fields={},
                                 pinmap={"T": by_name["T"], "R": by_name["R"]}))
             socket_net[lug] = net
+    if used_array:
         # the array's other pads exist on the board whether or not the drawing uses them
         sym = symbols.get(array_id)
         for key, pin in array_pins.items():

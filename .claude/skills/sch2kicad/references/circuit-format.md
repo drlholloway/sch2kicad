@@ -113,6 +113,10 @@ Unlisted nets are signals. List only what needs a kind:
 - `"kind": "power"` — a supply rail. `"draw": "flag"` (default) puts a flag at each
   pin; `"draw": "wire"` routes it as wire, for a rail the source draws as a line.
   Use the source's names when it has them (`VCC`, `VREF`/`Vref`, `VA`, `VB`, `+9V`).
+- `"draw": "label"` — a signal net joined by a net label at each pin instead of a wire,
+  for one that crosses the sheet between blocks (SEND/RETURN to a relay, a blend's two
+  inputs). Use it where the drawing labels the net, or on a board sheet of ours where a
+  wire would cross half the page.
 
 ## Ports, texts, notes, blocks, uncertain
 

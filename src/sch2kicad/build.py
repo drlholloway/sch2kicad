@@ -524,6 +524,11 @@ class Builder:
         order = sorted((n for n in terms if n not in flagged and len(terms[n]) >= 2),
                        key=lambda n: (len(terms[n]), _hpwl(terms[n])))
         for net in order:
+            if self.c.net(net).draw == "label":
+                # the reading asks for labels: a net that crosses the sheet between blocks
+                # (a send/return pair, a relay's coil lines) reads better named than wired
+                routed[net] = NetRoute(net, labelled=True)
+                continue
             r = router.route_net(net, terms[net])
             if r.failed_owners:
                 # a pin whose lead points straight into a neighbour's body has one move

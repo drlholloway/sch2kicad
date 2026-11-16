@@ -14,11 +14,13 @@ fp-info-cache
 *.kicad_prl
 
 # third-party build docs and schematics stay on disk for testing but out of
-# git (some ask not to be reposted); the readings in samples/circuits/ are tracked
+# git (some ask not to be reposted), and so do the readings of them in
+# samples/circuits/; only the made-up test circuits there are tracked
 samples/*.pdf
 samples/*.png
 samples/*.jpg
 samples/*.jpeg
 samples/*.gif
 samples/*.sch2kicad/
-samples/circuits/*.png
+samples/circuits/*
+!samples/circuits/synthetic-*.circuit.json

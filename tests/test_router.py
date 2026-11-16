@@ -40,7 +40,10 @@ def _shape(circuit: Path, out: Path) -> dict[str, tuple[int, int]]:
 
 def _drawn(name: str) -> bool:
     """Is the drawing this reading came from here? The router follows its wires when it is."""
-    img = load(SAMPLES / "circuits" / f"{name}.circuit.json").source_image()
+    reading = SAMPLES / "circuits" / f"{name}.circuit.json"
+    if not reading.exists():
+        return False
+    img = load(reading).source_image()
     return bool(img and img.exists())
 
 

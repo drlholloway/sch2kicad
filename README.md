@@ -103,8 +103,10 @@ Profiles are TOML in `src/sch2kicad/data/profiles/`; the lead-order table is
 
 - **M1 (done):** Chuck's Boneyard PNGs → verified projects + block schematics.
   Ripped Speaker, Bloody Germanium OD and Germanium Filter are regression cases
-  in `samples/circuits/` (the tests need no images). The source PNGs/PDFs are
-  third-party and stay out of git; drop them in `samples/` to run `compare`.
+  in `samples/circuits/` (the tests need no images). The source PNGs/PDFs and the
+  readings of them are third-party and stay out of git: only the two made-up
+  `synthetic-*` circuits are in the repo, and a test that needs a sample that is
+  not there is skipped.
 - **M2 (done):** the reading checked against the drawing. `sch2kicad
   crosscheck circuit.json` — and every `verify` — reads the source a second
   time, by its vectors where the page has them and by its pixels otherwise,
@@ -351,6 +353,7 @@ with it.
 
 Required Notice: Copyright (c) 2026 Lane Holloway (https://github.com/drlholloway/sch2kicad)
 
-The readings in `samples/circuits/` describe other people's circuits. Those designs
-belong to their designers and publishers, who are named in each file; the license
-above covers this project's code and documentation, not their work.
+The circuits this README names as samples are other people's designs and belong to
+their designers and publishers. Neither their drawings nor the readings of them are
+in this repository, and the license above covers only this project's code and
+documentation.

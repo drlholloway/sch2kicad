@@ -62,23 +62,22 @@ def onto_paper(img: Image.Image) -> tuple[Image.Image, bool]:
 # --------------------------------------------------------------------- PDFs
 
 def pdf_pages(pdf: Path, out: Path) -> list[dict]:
-    import pymupdf
-    doc = pymupdf.open(pdf)
+    from . import pdf as pdflib
+    doc = pdflib.open(pdf)
     rows = []
     (out / "pages").mkdir(parents=True, exist_ok=True)
     for i, page in enumerate(doc, start=1):
-        text = page.get_text()
+        text = page.text()
         words = text.split()
         refs = sum(1 for w in words if len(w) <= 5 and w[:1] in "RCQDU" and w[1:].isdigit())
         imgs = []
-        for im in page.get_images(full=True):
-            rects = page.get_image_rects(im[0])
-            if rects:
-                r = rects[0]
-                imgs.append({"xref": im[0], "w": im[2], "h": im[3], "area": round(r.width * r.height / (page.rect.width * page.rect.height), 2)})
-        drawings = len(page.get_drawings())
+        for im in page.images():
+            x0, y0, x1, y1 = im["rect"]
+            imgs.append({"image": im["index"], "w": im["w"], "h": im["h"],
+                         "area": round((x1 - x0) * (y1 - y0) / (page.width * page.height), 2)})
+        drawings = len(page.drawings())
         thumb = out / "pages" / f"page-{i:02d}.png"
-        page.get_pixmap(dpi=40).save(thumb)
+        page.render(40).save(thumb)
         big = [im for im in imgs if im["w"] * im["h"] >= 600_000]
         score = 0.0
         if big:
@@ -90,49 +89,48 @@ def pdf_pages(pdf: Path, out: Path) -> list[dict]:
             score += 30
         rows.append({"page": i, "words": len(words), "refs": refs, "drawings": drawings, "images": imgs,
                      "thumb": str(thumb), "score": round(score, 1)})
+    doc.close()
     return rows
 
 
 def pdf_schematic(pdf: Path, page_no: int, out: Path) -> tuple[Image.Image, dict, list[dict]]:
     """The schematic on a page: the embedded image at native size if one dominates, else a render."""
-    import pymupdf
-    doc = pymupdf.open(pdf)
+    from . import pdf as pdflib
+    doc = pdflib.open(pdf)
     page = doc[page_no - 1]
     best = None
-    for im in page.get_images(full=True):
-        for rect, m in page.get_image_rects(im[0], transform=True):
-            area = rect.width * rect.height / (page.rect.width * page.rect.height)
-            if im[2] * im[3] > 400_000 and (best is None or area > best[0]):
-                best = (area, im[0], m)
+    for im in page.images():
+        x0, y0, x1, y1 = im["rect"]
+        area = (x1 - x0) * (y1 - y0) / (page.width * page.height)
+        if im["w"] * im["h"] > 400_000 and (best is None or area > best[0]):
+            best = (area, im["index"], im["matrix"])
     meta = {"pdf": str(pdf), "page": page_no}
     text: list[dict] = []
     if best and best[0] > 0.25:
-        _, xref, m = best
-        info = doc.extract_image(xref)
-        img = flatten(Image.open(__import__("io").BytesIO(info["image"])))
+        _, index, (ma, mb, mc, md, me, mf) = best
+        img = flatten(page.image(index))
+        doc.close()
         # the placement matrix only says how the image sits on the page (often turned
         # to fit a portrait page); the pixels themselves are what the author drew,
         # unless the matrix mirrors them (Pedal Parts' ICL stores its sheet upside
         # down in a mirror and flips it back on the page): then flip them back here,
         # and whatever turn is left the text finds as usual
-        mirrored = m.a * m.d - m.b * m.c < 0
+        mirrored = ma * md - mb * mc < 0
         if mirrored:
             img = img.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
-        meta.update({"kind": "embedded-image", "xref": xref,
-                     "matrix": [m.a, m.b, m.c, m.d, m.e, m.f], "mirrored": mirrored})
+        meta.update({"kind": "embedded-image", "image": index,
+                     "matrix": [ma, mb, mc, md, me, mf], "mirrored": mirrored})
         return img, meta, text
     # vector page: render it, and keep its text with exact boxes
     dpi = 300
-    pix = page.get_pixmap(dpi=dpi)
-    img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+    img = page.render(dpi)
     k = dpi / 72
-    for b in page.get_text("dict")["blocks"]:
-        for line in b.get("lines", []):
-            for span in line.get("spans", []):
-                if span["text"].strip():
-                    x0, y0, x1, y1 = span["bbox"]
-                    text.append({"text": span["text"].strip(), "box": [round(x0 * k), round(y0 * k), round(x1 * k), round(y1 * k)],
-                                 "dir": [round(v, 2) for v in line.get("dir", (1, 0))]})
+    for span in page.spans():
+        if span["text"].strip():
+            x0, y0, x1, y1 = span["bbox"]
+            text.append({"text": span["text"].strip(), "box": [round(x0 * k), round(y0 * k), round(x1 * k), round(y1 * k)],
+                         "dir": [round(v, 2) + 0.0 for v in span["dir"]]})
+    doc.close()
     meta.update({"kind": "vector", "dpi": dpi})
     return img, meta, text
 

@@ -816,23 +816,23 @@ def vector_segments(pdf: Path, page_no: int, scale: float, rot: int = 0) -> tupl
     ``rot`` is how far ingest turned the page (the Acapulco Tone draws its circuit
     sideways on an upright page), so the segments land on ``source.png`` as it is.
     """
-    import pymupdf
+    from . import pdf as pdflib
 
-    doc = pymupdf.open(pdf)
+    doc = pdflib.open(pdf)
     page = doc[page_no - 1]
-    w, h = page.rect.width * scale, page.rect.height * scale
+    w, h = page.width * scale, page.height * scale
 
     def at(x: float, y: float) -> Point:
         return turn_point((x * scale, y * scale), rot, w, h)
     segs: list[Seg] = []
     dots: list[Dot] = []
-    for d in page.get_drawings():
+    for d in page.drawings():
         items = d["items"]
         if "f" in (d["type"] or "") and items and all(it[0] in ("c", "qu") for it in items):
-            r = d["rect"]                       # a filled blob: a junction dot
-            dw, dh = (r.x1 - r.x0) * scale, (r.y1 - r.y0) * scale
+            x0, y0, x1, y1 = d["rect"]          # a filled blob: a junction dot
+            dw, dh = (x1 - x0) * scale, (y1 - y0) * scale
             if dw <= 12 and dh <= 12 and abs(dw - dh) <= 3:
-                dots.append(Dot(*at((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2), max(dw, dh) / 2))
+                dots.append(Dot(*at((x0 + x1) / 2, (y0 + y1) / 2), max(dw, dh) / 2))
             continue
         if "s" not in (d["type"] or "") or _closed(items):
             continue                            # a closed path is an outline, not a wire

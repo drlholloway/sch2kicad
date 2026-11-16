@@ -97,13 +97,10 @@ def _grid_rows(page, pno: int) -> list[Row]:
     columns line up exactly, so a column is a set of words sharing a left edge, and
     a ref column is one whose words look like references.
     """
-    words = [w for w in page.get_text("words") if w[4].strip()]
-    bold = [sp["bbox"] for b in page.get_text("dict")["blocks"] for line in b.get("lines", [])
-            for sp in line.get("spans", []) if sp["flags"] & 16]
+    words = [w for w in page.words() if w[4].strip()]
 
     def is_bold(w) -> bool:
-        cx, cy = (w[0] + w[2]) / 2, (w[1] + w[3]) / 2
-        return any(x0 <= cx <= x1 and y0 <= cy <= y1 for x0, y0, x1, y1 in bold)
+        return w[5]
 
     heads = [(w, _GRID_HEADS[w[4].upper().strip(":")]) for w in words
              if w[4].upper().strip(":") in _GRID_HEADS and is_bold(w)]
@@ -170,14 +167,14 @@ def _grid_rows(page, pno: int) -> list[Row]:
 
 def extract(pdf: Path) -> list[Row]:
     """Rows of every parts-list table (a LOCATION/PART, VALUE, TYPE header) in a PDF."""
-    import pymupdf
+    from . import pdf as pdflib
     rows: list[Row] = []
-    with pymupdf.open(pdf) as doc:
+    with pdflib.open(pdf) as doc:
         for pno, page in enumerate(doc, 1):
             cols: list[tuple[str, float]] | None = None
             last_y = 0.0
             steps: list[float] = []
-            for y, ws in _lines(page.get_text("words")):
+            for y, ws in _lines(page.words()):
                 upper = {w[4].upper() for w in ws}
                 if cols is None:
                     if {"VALUE", "TYPE"} <= upper and upper & _REF_HEADS:

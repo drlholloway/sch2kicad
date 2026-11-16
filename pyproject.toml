@@ -8,7 +8,7 @@ dependencies = [
     "numpy>=1.26",
     "opencv-python-headless>=4.9",
     "pillow>=10.0",
-    "pymupdf>=1.24",
+    "pypdfium2>=5.0",
 ]
 
 [project.scripts]

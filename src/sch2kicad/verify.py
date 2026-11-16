@@ -380,7 +380,7 @@ def run_erc(sch: Path, out: Path) -> tuple[list[str], list[str]]:
 # ------------------------------------------------------------------- render
 
 def render_png(sch: Path, out_png: Path, dpi: int = 150, crop: bool = True) -> Path:
-    import pymupdf
+    from . import pdf as pdflib
     pdf = out_png.with_suffix(".pdf")
     args = [str(kicad_cli()), "sch", "export", "pdf", "--no-background-color"]
     if crop:
@@ -388,18 +388,15 @@ def render_png(sch: Path, out_png: Path, dpi: int = 150, crop: bool = True) -> P
     r = subprocess.run(args + ["-o", str(pdf), str(sch)], capture_output=True, text=True)
     if r.returncode != 0 or not pdf.exists():
         raise RuntimeError(f"PDF export failed: {r.stdout}{r.stderr}")
-    doc = pymupdf.open(pdf)
+    doc = pdflib.open(pdf)
     page = doc[0]
     clip = None
     if crop:
-        rects = [d["rect"] for d in page.get_drawings()]
-        rects += [pymupdf.Rect(b[:4]) for b in page.get_text("blocks")]
-        rects = [r for r in rects if not r.is_infinite]
+        rects = [d["rect"] for d in page.drawings()] + [w[:4] for w in page.words()]
         if rects:
-            clip = pymupdf.Rect(min(r.x0 for r in rects) - 12, min(r.y0 for r in rects) - 12,
-                                max(r.x1 for r in rects) + 12, max(r.y1 for r in rects) + 12)
-    pix = page.get_pixmap(dpi=dpi, clip=clip)
-    pix.save(out_png)
+            clip = (min(r[0] for r in rects) - 12, min(r[1] for r in rects) - 12,
+                    max(r[2] for r in rects) + 12, max(r[3] for r in rects) + 12)
+    page.render(dpi, clip).save(out_png)
     doc.close()
     return out_png
 

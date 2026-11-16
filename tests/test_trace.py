@@ -711,13 +711,10 @@ def test_a_circuit_drawn_sideways_on_an_upright_page_is_traced_turned(tmp_path):
 
 
 def _vector_page(tmp_path, draw):
-    import pymupdf
-    doc = pymupdf.open()
-    page = doc.new_page(width=200, height=200)
+    import pdfs
+    page = pdfs.Canvas(200)
     draw(page)
-    path = tmp_path / "page.pdf"
-    doc.save(path)
-    return path
+    return pdfs.write(tmp_path / "page.pdf", 200, 200, page.content())
 
 
 def test_a_white_stroke_is_not_a_wire(tmp_path):
@@ -760,9 +757,9 @@ def test_a_box_drawn_as_a_quad_is_an_outline():
     """The Halsted St OD's PDF (KiCad printed through macOS) draws boxes as quad items,
     which the vector reader took for a curve's two ends and failed on: a quad has no
     x. A quad is four-sided and closed, an outline."""
-    import pymupdf
+    from sch2kicad.pdf import Pt
     from sch2kicad.trace import _closed
-    q = pymupdf.Quad((60, 80), (120, 80), (60, 140), (120, 140))
+    q = [Pt(60, 80), Pt(120, 80), Pt(60, 140), Pt(120, 140)]
     assert _closed([("qu", q)])
 
 
@@ -841,23 +838,17 @@ def test_a_sheet_stored_mirrored_in_its_pdf_is_flipped_back(tmp_path):
     """A PDF can store an image upside down in a mirror and flip it back with its
     placement matrix (Pedal Parts' ICL): the pixels as stored read 6 for 9 and put a
     DIP's notch at the bottom, so ingest undoes a mirroring placement."""
-    import io
     import numpy as np
-    import pymupdf
+    import pdfs
     from PIL import Image
     from sch2kicad.ingest import pdf_schematic
     stored = Image.new("L", (800, 600), 255)
     stored.paste(0, (0, 0, 800, 100))                 # a black band along the top as stored
-    buf = io.BytesIO()
-    stored.save(buf, "PNG")
-    doc = pymupdf.open()
-    page = doc.new_page(width=800, height=600)
-    xref = page.insert_image(page.rect, stream=buf.getvalue())
-    name = [im[7] for im in page.get_images(full=True) if im[0] == xref][0]
+    picture = pdfs.stream("/Type /XObject /Subtype /Image /Width 800 /Height 600 "
+                          "/ColorSpace /DeviceGray /BitsPerComponent 8", stored.tobytes())
     # draw it mirrored top to bottom: the band shows along the bottom of the page
-    doc.update_stream(page.get_contents()[0], f"q 800 0 0 -600 0 600 cm /{name} Do Q".encode())
-    pdf = tmp_path / "mirrored.pdf"
-    doc.save(pdf)
+    pdf = pdfs.write(tmp_path / "mirrored.pdf", 800, 600, "q 800 0 0 -600 0 600 cm /Im0 Do Q",
+                     xobjects={"Im0": picture})
     img, meta, _ = pdf_schematic(pdf, 1, tmp_path)
     ink = np.array(img.convert("L")) < 128
     assert meta["mirrored"] is True

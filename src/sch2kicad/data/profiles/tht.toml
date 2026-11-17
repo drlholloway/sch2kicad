@@ -118,7 +118,7 @@ footprint = "2025_PedalDivision_Capacitors:TH_Cap_XL_Radial_D8.0mm_P2.50mm"
 [[footprints]]
 type = ["opamp_single", "ic"]
 pins = 8
-footprint = "2025_PedalDivision_OpAmps:DIP-8pin_TH"
+footprint = "2025_PedalDivision_OpAmps:DIP-8_W7.62mm"
 
 [[footprints]]
 type = "ic"

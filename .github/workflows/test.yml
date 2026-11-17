@@ -1,0 +1,28 @@
+name: test
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+# Least privilege: these jobs only read the repository.
+permissions:
+  contents: read
+
+jobs:
+  python:
+    # The runners have no KiCad, no Pedal Division library and none of the
+    # third-party samples, so the tests that need one of those are skipped.
+    name: Tests without KiCad (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --frozen --group dev
+      - run: uv run --frozen pytest -q
+      - name: the command line starts
+        run: uv run --frozen sch2kicad pinout 2N5089 J201

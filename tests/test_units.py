@@ -9,6 +9,19 @@ from sch2kicad.parts import canonical_pin, lookup_pinout, pinout_assumption
 from sch2kicad.router import normalise
 
 
+def _have_kicad():
+    from sch2kicad.kicad_env import kicad_cli
+    from sch2kicad.symlib import SymbolResolver
+    try:
+        kicad_cli()
+        return SymbolResolver().exists("2025_PedalDivision_Resistors:TH_Resistor_1/4w")
+    except Exception:
+        return False
+
+
+needs_kicad = pytest.mark.skipif(not _have_kicad(), reason="needs KiCad 10 and the Pedal Division library")
+
+
 def test_sexpr_round_trip():
     text = '(kicad_sch (version 20260306) (paper "A4") (text "a \\"quoted\\" word\\nnext" (at 1.27 -2.54 0)))'
     node = sexpr.parse(text)
@@ -111,6 +124,7 @@ def test_normalise_splits_t_joins():
     assert juncs == [(2.54, 0.0)]
 
 
+@needs_kicad
 def test_a_p_channel_jfet_keeps_its_own_lead_order():
     """J176 is D-G-S through-hole, not the house D-S-G. A part whose order differs
     gets the stock KiCad symbol for that order on the same TO-92 footprint, so the
@@ -209,6 +223,7 @@ def test_an_on_off_toggle_lands_on_the_house_spdt():
             "2025_PedalDivision_Switches:Mini Switch SPDT"
 
 
+@needs_kicad
 def test_with_no_true_bypass_the_jacks_come_in_on_sockets():
     """The Abductor II switches its delay send with a JFET and wires its jacks straight
     to the board: no 3PDT. On the 3PDT pad array its IN and OUT would sit among pads

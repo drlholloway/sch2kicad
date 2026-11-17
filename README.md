@@ -45,6 +45,11 @@ uv tool install --editable .                          # puts sch2kicad on PATH
 ln -s "$PWD/.claude/skills/sch2kicad" ~/.claude/skills/sch2kicad   # the skill, everywhere
 ```
 
+The skill keeps your own paths (where this repo is cloned, where your KiCad
+projects go, your design-block libraries) in `.claude/skills/sch2kicad/local.md`,
+which git ignores. Copy `local.example.md` there and fill it in, or let Claude
+ask you for them the first time.
+
 Then ask Claude Code to convert a schematic, e.g. *"convert
 samples/RedMuffin-PedalPCB.pdf to KiCad"*.
 

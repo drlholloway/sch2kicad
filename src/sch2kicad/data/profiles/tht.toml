@@ -1,5 +1,5 @@
 # Through-hole build in the Pedal Division library — the house style mined
-# from ~/PCB (TH_Resistor_1/4w, TH_Film_Cap, 16mm_Alpha_style, TH_NPN, ...).
+# from finished projects (TH_Resistor_1/4w, TH_Film_Cap, 16mm_Alpha_style, TH_NPN, ...).
 #
 # [symbols] picks the symbol for each part type; its own Footprint field is
 # used unless a [[footprints]] rule matches first (first match wins).

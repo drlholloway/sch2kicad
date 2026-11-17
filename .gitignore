@@ -24,3 +24,6 @@ samples/*.gif
 samples/*.sch2kicad/
 samples/circuits/*
 !samples/circuits/synthetic-*.circuit.json
+
+# each person's own paths for the skill
+.claude/skills/sch2kicad/local.md

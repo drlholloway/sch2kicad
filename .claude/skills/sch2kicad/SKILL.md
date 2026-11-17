@@ -24,15 +24,29 @@ compare the render with the source before saying it is done.
 sch2kicad profiles
 ```
 
-If that fails, reinstall (source lives at `~/Code/schematic-image-to-kicad-converter`):
+If that fails, reinstall from the source checkout named in `local.md` (below):
 
 ```sh
-uv tool install --editable ~/Code/schematic-image-to-kicad-converter
+uv tool install --editable <source checkout>
 ```
 
 It needs KiCad 10 (`kicad-cli`) and reads the user's own KiCad library
 tables, so symbols and footprints resolve exactly as they do in KiCad.
 `tesseract` is optional (OCR anchors).
+
+## Your setup
+
+The details that differ from one person to the next live in `local.md`, beside
+this file. It is not in the repo. Read it before the first step:
+
+- **source checkout**: where the `sch2kicad` repo is cloned;
+- **projects folder**: where finished KiCad projects go, one folder per circuit;
+- **design-block libraries**: the user's own KiCad design-block libraries, which
+  this skill leaves alone.
+
+If `local.md` is missing, ask the user for these, then write it from
+[local.example.md](local.example.md). Below, `<source checkout>` and
+`<projects folder>` stand for what it says.
 
 ## Workflow
 
@@ -40,8 +54,8 @@ tables, so symbols and footprints resolve exactly as they do in KiCad.
 AskUserQuestion with "Through-hole (Recommended)" first. If they skip or
 don't care, use through-hole (`-p tht`); SMD is `-p smd` (JLC assembly, SOT-23
 transistors). Also confirm where the project goes; default to
-`~/PCB/<circuit name>/` only after they agree — that folder is their real
-workspace.
+`<projects folder>/<circuit name>/` only after they agree — that folder is their
+real workspace.
 
 **1. Ingest.** For a PDF, list the pages first and look at the thumbnail of
 the likely page before choosing:
@@ -79,7 +93,7 @@ labels in block files.
 **3. Build and verify.** One command does both; exit 0 means READY:
 
 ```sh
-sch2kicad build circuit.json -o ~/PCB/Name -p tht
+sch2kicad build circuit.json -o "<projects folder>/Name" -p tht
 ```
 
 ```
@@ -147,18 +161,18 @@ which you can pull apart in KiCad in seconds. Wires follow the drawing's own: wh
 their screen (images you read are not shown to them in the terminal):
 
 ```sh
-sch2kicad compare ~/PCB/Name/Name.kicad_sch --open      # --layout stacked for very wide sheets
+sch2kicad compare "<projects folder>/Name/Name.kicad_sch" --open      # --layout stacked for very wide sheets
 ```
 
 **5. Blocks.** Each block in `circuit.json` becomes its own schematic: parts,
 internal wiring, flags, and a global label for every net that leaves it:
 
 ```sh
-sch2kicad blocks circuit.json -o ~/PCB/Name/blocks -p tht
+sch2kicad blocks circuit.json -o "<projects folder>/Name/blocks" -p tht
 ```
 
 Blocks stay as standalone schematics for now — do not write into the user's
-design-block libraries (`CryptidEffectsDesignBlocks` etc.) unless asked.
+design-block libraries (listed in `local.md`) unless asked.
 `sch2kicad blocks` doesn't verify; run `sch2kicad verify` on each block file. A
 block is cut from a larger circuit, so its boundary nets are driven from
 outside; verify says so in a note rather than failing on it.

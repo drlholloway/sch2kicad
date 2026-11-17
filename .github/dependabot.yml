@@ -1,0 +1,11 @@
+# Dependabot version updates. Security alerts and fixes are enabled in the
+# repository settings; this schedules routine bumps.
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python:
+        patterns: ["*"]

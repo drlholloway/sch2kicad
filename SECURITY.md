@@ -23,7 +23,7 @@ calls and has no telemetry. The interesting surface is:
   document (its notes, its parts list, the words on the drawing) is read by Claude.
   Text in a document that gets Claude to do something other than convert the
   schematic is in scope.
-- **Dependencies** pulled in through Python packages.
+- **Dependencies** pulled in through Python packages and GitHub Actions.
 
 A crash on a malformed file, or a schematic read wrongly, is an ordinary bug unless
 it leads to something more. Vulnerabilities in Claude Code itself go to
@@ -43,5 +43,5 @@ stay anonymous.
 
 ## Dependencies
 
-Dependabot watches the Python dependencies weekly, and CodeQL scans the code on
-every push.
+Dependabot watches the Python and GitHub Actions dependencies weekly, and CodeQL
+scans the code on every push.

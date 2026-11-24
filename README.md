@@ -352,11 +352,13 @@ uv run --group dev pytest        # end-to-end tests need KiCad 10 + the Pedal Di
 
 ## License
 
-sch2kicad is licensed under the [PolyForm Shield License 1.0.0](LICENSE.md): you may
-use, change and share it for any purpose except providing a product that competes
-with it.
+sch2kicad is free software under the [GNU Affero General Public License, version 3
+only](LICENSE.md) (AGPL-3.0-only): you may use, change and share it, and if you
+distribute a changed version, or run one as a service for others, you must publish
+your changes under the same license.
 
-Required Notice: Copyright (c) 2026 Lane Holloway (https://github.com/drlholloway/sch2kicad)
+Copyright (c) 2026 Lane Holloway; see [NOTICE](NOTICE). Versions before 24 November
+2026 were under the PolyForm Shield License 1.0.0.
 
 The circuits this README names as samples are other people's designs and belong to
 their designers and publishers. Neither their drawings nor the readings of them are
